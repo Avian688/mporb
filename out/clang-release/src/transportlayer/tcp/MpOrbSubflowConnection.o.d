@@ -114,6 +114,11 @@
   transportlayer/tcp/../../../../mptcp/src/transportlayer/tcp/flavours/../../../../../tcpPaced/src/transportlayer/tcp/flavours/TcpPacedFamily.h \
   transportlayer/tcp/../../../../mptcp/src/transportlayer/tcp/../../common/DataSequenceNumberTag_m.h \
   transportlayer/tcp/../../../../orbtcp/src/common/IntTag_m.h \
+  transportlayer/tcp/../../../../mptcp/src/transportlayer/tcp/MpTcpConnection.h \
+  ../../inet4.5/src/inet/common/socket/SocketMap.h \
+  ../../inet4.5/src/inet/common/socket/ISocket.h \
+  transportlayer/tcp/../../../../mptcp/src/transportlayer/tcp/MpTcpFlowScheduler.h \
+  transportlayer/tcp/../../../../mptcp/src/transportlayer/tcp/MpTcpPacketScheduler.h \
   transportlayer/tcp/flavours/MpOrbFlavour.h \
   transportlayer/tcp/flavours/../../../../../orbtcp/src/transportlayer/orbtcp/flavours/OrbtcpFlavour.h \
   transportlayer/tcp/flavours/../../../../../orbtcp/src/transportlayer/orbtcp/flavours/../../../common/IntTag_m.h \
@@ -238,6 +243,11 @@ transportlayer/tcp/../../../../mptcp/src/transportlayer/tcp/flavours/MpTcpFamily
 transportlayer/tcp/../../../../mptcp/src/transportlayer/tcp/flavours/../../../../../tcpPaced/src/transportlayer/tcp/flavours/TcpPacedFamily.h:
 transportlayer/tcp/../../../../mptcp/src/transportlayer/tcp/../../common/DataSequenceNumberTag_m.h:
 transportlayer/tcp/../../../../orbtcp/src/common/IntTag_m.h:
+transportlayer/tcp/../../../../mptcp/src/transportlayer/tcp/MpTcpConnection.h:
+../../inet4.5/src/inet/common/socket/SocketMap.h:
+../../inet4.5/src/inet/common/socket/ISocket.h:
+transportlayer/tcp/../../../../mptcp/src/transportlayer/tcp/MpTcpFlowScheduler.h:
+transportlayer/tcp/../../../../mptcp/src/transportlayer/tcp/MpTcpPacketScheduler.h:
 transportlayer/tcp/flavours/MpOrbFlavour.h:
 transportlayer/tcp/flavours/../../../../../orbtcp/src/transportlayer/orbtcp/flavours/OrbtcpFlavour.h:
 transportlayer/tcp/flavours/../../../../../orbtcp/src/transportlayer/orbtcp/flavours/../../../common/IntTag_m.h:

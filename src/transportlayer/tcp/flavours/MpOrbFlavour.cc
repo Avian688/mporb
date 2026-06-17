@@ -102,7 +102,8 @@ void MpOrbFlavour::receivedDataAck(uint32_t firstSeqAcked, IntDataVec intData)
     TcpTahoeRenoFamily::receivedDataAck(firstSeqAcked);
     EV_INFO << "\nMPORBInfo ___________________________________________" << endl;
     EV_INFO << "\nMPORBInfo - Received Data Ack" << endl;
-    if (state->lossRecovery && state->sack_enabled) {
+    bool wasInLossRecovery = state->lossRecovery && state->sack_enabled;
+    if (wasInLossRecovery) {
         if (seqGE(state->snd_una, state->recoveryPoint)) {
             EV_INFO << "Loss Recovery terminated.\n";
             state->lossRecovery = false;
@@ -111,6 +112,13 @@ void MpOrbFlavour::receivedDataAck(uint32_t firstSeqAcked, IntDataVec intData)
             dynamic_cast<TcpPacedConnection *>(conn)->doRetransmit();
         }
         conn->emit(recoveryPointSignal, state->recoveryPoint);
+
+        conn->emit(cwndSignal, state->snd_cwnd);
+        if (!reactTimer->isScheduled())
+            conn->scheduleAt(simTime() + state->srtt.dbl(), reactTimer);
+        conn->emit(sndUnaSignal, state->snd_una);
+        conn->emit(sndMaxSignal, state->snd_max);
+        return;
     }
 
     double uVal = measureInflight(intData);
@@ -148,19 +156,20 @@ void MpOrbFlavour::receivedDuplicateAck()
 void MpOrbFlavour::receivedDuplicateAck(uint32_t firstSeqAcked, IntDataVec intData)
 {
     state->initialPhase = false;
-    bool isHighRxtLost = dynamic_cast<TcpPacedConnection *>(conn)->checkIsLost(state->snd_una + state->snd_mss);
-    bool rackLoss = dynamic_cast<TcpPacedConnection *>(conn)->checkRackLoss();
-    if ((rackLoss && !state->lossRecovery) || state->dupacks == state->dupthresh || (isHighRxtLost && !state->lossRecovery)) {
+    auto pacedConn = dynamic_cast<TcpPacedConnection *>(conn);
+    if (shouldEnterLossRecoveryOnDuplicateAck()) {
         EV_INFO << "Reno on dupAcks == DUPTHRESH(=" << state->dupthresh << ": perform Fast Retransmit, and enter Fast Recovery:";
 
         if (state->sack_enabled) {
-            if (state->recoveryPoint == 0 || seqGE(state->snd_una, state->recoveryPoint)) {
+            if ((state->recoveryPoint == 0 || seqGE(state->snd_una, state->recoveryPoint)) && !state->lossRecovery) {
                 state->recoveryPoint = state->snd_max;
                 state->lossRecovery = true;
-                dynamic_cast<TcpPacedConnection *>(conn)->setSackedHeadLost();
-                dynamic_cast<TcpPacedConnection *>(conn)->updateInFlight();
+                conn->emit(recoveryPointSignal, state->recoveryPoint);
+                pacedConn->setSackedHeadLostIfRackDisabled();
+                pacedConn->updateInFlight();
+                setRecoveryCongestionWindow();
                 EV_DETAIL << " recoveryPoint=" << state->recoveryPoint;
-                dynamic_cast<TcpPacedConnection *>(conn)->doRetransmit();
+                pacedConn->doRetransmit();
             }
         }
 
@@ -171,8 +180,15 @@ void MpOrbFlavour::receivedDuplicateAck(uint32_t firstSeqAcked, IntDataVec intDa
             }
         }
     }
-    else if (state->dupacks > state->dupthresh) {
-        EV_INFO << "dupAcks > DUPTHRESH(=" << state->dupthresh << ": Fast Recovery: inflating cwnd by SMSS, new cwnd=" << state->snd_cwnd << "\n";
+    else if (state->lossRecovery && state->dupacks > state->dupthresh)
+        EV_DETAIL << "Additional duplicate ACK during RACK recovery; cwnd remains "
+                  << state->snd_cwnd << "\n";
+
+    if (state->lossRecovery) {
+        conn->emit(cwndSignal, state->snd_cwnd);
+        if (!reactTimer->isScheduled())
+            conn->scheduleAt(simTime() + state->srtt.dbl(), reactTimer);
+        return;
     }
 
     double uVal = measureInflight(intData);
@@ -198,6 +214,8 @@ void MpOrbFlavour::receivedDuplicateAck(uint32_t firstSeqAcked, IntDataVec intDa
 void MpOrbFlavour::processRexmitTimer(TcpEventCode& event)
 {
     TcpPacedFamily::processRexmitTimer(event);
+    if (event == TCP_E_ABORT)
+        return;
 
     EV_INFO << "Begin Slow Start: resetting cwnd to " << state->snd_cwnd
             << ", ssthresh=" << state->ssthresh << "\n";
