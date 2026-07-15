@@ -31,6 +31,7 @@ class MpOrbSubflowConnection : public SubflowConnection
 
     virtual void pushIntContext(const Ptr<const TcpHeader>& tcpHeader);
     virtual void popIntContext();
+    virtual const char *getSubflowAlgorithmClass() const;
 
   public:
     virtual bool openActive(L3Address localAddr, L3Address remoteAddr, int localPort, int remotePort) override;

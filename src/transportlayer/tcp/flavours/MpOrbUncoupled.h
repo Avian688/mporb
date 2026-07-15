@@ -13,15 +13,15 @@
 // along with this program.  If not, see http://www.gnu.org/licenses/.
 //
 
-#ifndef MPORB_TRANSPORTLAYER_TCP_FLAVOURS_MPORBFLAVOUR_H_
-#define MPORB_TRANSPORTLAYER_TCP_FLAVOURS_MPORBFLAVOUR_H_
+#ifndef MPORB_TRANSPORTLAYER_TCP_FLAVOURS_MPORBUNCOUPLED_H_
+#define MPORB_TRANSPORTLAYER_TCP_FLAVOURS_MPORBUNCOUPLED_H_
 
 #include "../../../../../orbtcp/src/transportlayer/orbtcp/flavours/OrbtcpFlavour.h"
 
 namespace inet {
 namespace tcp {
 
-class MpOrbFlavour : public OrbtcpFlavour
+class MpOrbUncoupled : public OrbtcpFlavour
 {
   protected:
     virtual IntDataVec getCurrentIntData() const;

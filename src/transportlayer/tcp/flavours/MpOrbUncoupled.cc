@@ -4,7 +4,7 @@
 // SPDX-License-Identifier: LGPL-3.0-or-later
 //
 
-#include "MpOrbFlavour.h"
+#include "MpOrbUncoupled.h"
 
 #include "../../../../../tcpPaced/src/transportlayer/tcp/TcpPacedConnection.h"
 #include "../MpOrbSubflowConnection.h"
@@ -12,9 +12,9 @@
 namespace inet {
 namespace tcp {
 
-Register_Class(MpOrbFlavour);
+Register_Class(MpOrbUncoupled);
 
-IntDataVec MpOrbFlavour::getCurrentIntData() const
+IntDataVec MpOrbUncoupled::getCurrentIntData() const
 {
     auto *subflow = dynamic_cast<MpOrbSubflowConnection *>(conn);
     if (subflow == nullptr)
@@ -23,7 +23,7 @@ IntDataVec MpOrbFlavour::getCurrentIntData() const
     return subflow->getCurrentIntData();
 }
 
-void MpOrbFlavour::established(bool active)
+void MpOrbUncoupled::established(bool active)
 {
     state->snd_cwnd = 7300;
     dynamic_cast<TcpPacedConnection *>(conn)->changeIntersendingTime(0.000001);
@@ -38,12 +38,12 @@ void MpOrbFlavour::established(bool active)
     }
 }
 
-void MpOrbFlavour::receiveSeqChanged()
+void MpOrbUncoupled::receiveSeqChanged()
 {
     receiveSeqChanged(getCurrentIntData());
 }
 
-void MpOrbFlavour::receiveSeqChanged(IntDataVec intData)
+void MpOrbUncoupled::receiveSeqChanged(IntDataVec intData)
 {
     if (state->full_sized_segment_counter == 0 && !state->ack_now && state->last_ack_sent == state->rcv_nxt && !delayedAckTimer->isScheduled()) {
     }
@@ -53,7 +53,7 @@ void MpOrbFlavour::receiveSeqChanged(IntDataVec intData)
 
         auto *subflow = dynamic_cast<MpOrbSubflowConnection *>(conn);
         if (subflow == nullptr)
-            throw cRuntimeError("MpOrbFlavour requires MpOrbSubflowConnection");
+            throw cRuntimeError("MpOrbUncoupled requires MpOrbSubflowConnection");
 
         if (!state->delayed_acks_enabled) {
             EV_INFO << "rcv_nxt changed to " << state->rcv_nxt << ", (delayed ACK disabled) sending ACK now\n";
@@ -77,27 +77,27 @@ void MpOrbFlavour::receiveSeqChanged(IntDataVec intData)
     }
 }
 
-void MpOrbFlavour::receivedOutOfOrderSegment()
+void MpOrbUncoupled::receivedOutOfOrderSegment()
 {
     receivedOutOfOrderSegment(getCurrentIntData());
 }
 
-void MpOrbFlavour::receivedOutOfOrderSegment(IntDataVec intData)
+void MpOrbUncoupled::receivedOutOfOrderSegment(IntDataVec intData)
 {
     state->ack_now = true;
     EV_INFO << "Out-of-order segment, sending immediate ACK\n";
     auto *subflow = dynamic_cast<MpOrbSubflowConnection *>(conn);
     if (subflow == nullptr)
-        throw cRuntimeError("MpOrbFlavour requires MpOrbSubflowConnection");
+        throw cRuntimeError("MpOrbUncoupled requires MpOrbSubflowConnection");
     subflow->sendIntAck(intData);
 }
 
-void MpOrbFlavour::receivedDataAck(uint32_t firstSeqAcked)
+void MpOrbUncoupled::receivedDataAck(uint32_t firstSeqAcked)
 {
     receivedDataAck(firstSeqAcked, getCurrentIntData());
 }
 
-void MpOrbFlavour::receivedDataAck(uint32_t firstSeqAcked, IntDataVec intData)
+void MpOrbUncoupled::receivedDataAck(uint32_t firstSeqAcked, IntDataVec intData)
 {
     TcpTahoeRenoFamily::receivedDataAck(firstSeqAcked);
     EV_INFO << "\nMPORBInfo ___________________________________________" << endl;
@@ -148,12 +148,12 @@ void MpOrbFlavour::receivedDataAck(uint32_t firstSeqAcked, IntDataVec intData)
     conn->emit(sndMaxSignal, state->snd_max);
 }
 
-void MpOrbFlavour::receivedDuplicateAck()
+void MpOrbUncoupled::receivedDuplicateAck()
 {
     receivedDuplicateAck(state->snd_una, getCurrentIntData());
 }
 
-void MpOrbFlavour::receivedDuplicateAck(uint32_t firstSeqAcked, IntDataVec intData)
+void MpOrbUncoupled::receivedDuplicateAck(uint32_t firstSeqAcked, IntDataVec intData)
 {
     state->initialPhase = false;
     auto pacedConn = dynamic_cast<TcpPacedConnection *>(conn);
@@ -211,7 +211,7 @@ void MpOrbFlavour::receivedDuplicateAck(uint32_t firstSeqAcked, IntDataVec intDa
         conn->scheduleAt(simTime() + state->srtt.dbl(), reactTimer);
 }
 
-void MpOrbFlavour::processRexmitTimer(TcpEventCode& event)
+void MpOrbUncoupled::processRexmitTimer(TcpEventCode& event)
 {
     TcpPacedFamily::processRexmitTimer(event);
     if (event == TCP_E_ABORT)
@@ -221,8 +221,9 @@ void MpOrbFlavour::processRexmitTimer(TcpEventCode& event)
             << ", ssthresh=" << state->ssthresh << "\n";
 
     state->afterRto = true;
-    dynamic_cast<TcpPacedConnection *>(conn)->cancelPaceTimer();
-    sendData(false);
+    auto *pacedConnection = check_and_cast<TcpPacedConnection *>(conn);
+    pacedConnection->cancelPaceTimer();
+    pacedConnection->retransmitOneSegment(true);
 }
 
 } // namespace tcp

@@ -15,8 +15,10 @@
 
 #include "MpOrbSubflowConnection.h"
 
+#include <cstring>
+
 #include "../../../../mptcp/src/transportlayer/tcp/MpTcpConnection.h"
-#include "flavours/MpOrbFlavour.h"
+#include "flavours/MpOrbUncoupled.h"
 
 namespace inet {
 namespace tcp {
@@ -24,7 +26,19 @@ namespace tcp {
 Define_Module(MpOrbSubflowConnection);
 
 namespace {
-constexpr const char *MPORB_SUBFLOW_ALGORITHM = "MpOrbFlavour";
+constexpr const char *MPORB_SUBFLOW_ALGORITHM = "MpOrbUncoupled";
+}
+
+const char *MpOrbSubflowConnection::getSubflowAlgorithmClass() const
+{
+    const char *configured = nullptr;
+    if (tcpMain != nullptr)
+        configured = tcpMain->par("tcpAlgorithmClass");
+
+    if (opp_isempty(configured) || strncmp(configured, "MpTcp", 5) == 0)
+        return MPORB_SUBFLOW_ALGORITHM;
+
+    return configured;
 }
 
 void MpOrbSubflowConnection::pushIntContext(const Ptr<const TcpHeader>& tcpHeader)
@@ -57,7 +71,7 @@ bool MpOrbSubflowConnection::openActive(L3Address localAddr, L3Address remoteAdd
     openCmd->setLocalPort(localPort);
     openCmd->setRemotePort(remotePort);
     if (opp_isempty(openCmd->getTcpAlgorithmClass()))
-        openCmd->setTcpAlgorithmClass(MPORB_SUBFLOW_ALGORITHM);
+        openCmd->setTcpAlgorithmClass(getSubflowAlgorithmClass());
     return processInternalCommand(TCP_C_OPEN_ACTIVE, openCmd);
 }
 
@@ -68,7 +82,7 @@ bool MpOrbSubflowConnection::openPassive(L3Address localAddr, int localPort)
     openCmd->setLocalPort(localPort);
     openCmd->setFork(false);
     if (opp_isempty(openCmd->getTcpAlgorithmClass()))
-        openCmd->setTcpAlgorithmClass(MPORB_SUBFLOW_ALGORITHM);
+        openCmd->setTcpAlgorithmClass(getSubflowAlgorithmClass());
     return processInternalCommand(TCP_C_OPEN_PASSIVE, openCmd);
 }
 
@@ -80,7 +94,7 @@ void MpOrbSubflowConnection::setUpConnection(L3Address src, L3Address dest, int 
     openCmd->setLocalPort(destPort);
     openCmd->setRemotePort(srcPort);
     if (opp_isempty(openCmd->getTcpAlgorithmClass()))
-        openCmd->setTcpAlgorithmClass(MPORB_SUBFLOW_ALGORITHM);
+        openCmd->setTcpAlgorithmClass(getSubflowAlgorithmClass());
 
     initConnection(openCmd);
     state->active = false;
