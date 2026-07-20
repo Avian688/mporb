@@ -30,12 +30,10 @@ OBJS = \
     $O/transportlayer/tcp/MpOrb.o \
     $O/transportlayer/tcp/MpOrbConnection.o \
     $O/transportlayer/tcp/MpOrbSubflowConnection.o \
-    $O/transportlayer/tcp/flavours/MpOrbSemiCoupled.o \
     $O/transportlayer/tcp/flavours/MpOrbSemiCoupledAlpha.o \
-    $O/transportlayer/tcp/flavours/MpOrbSemiCoupledBeta.o \
+    $O/transportlayer/tcp/flavours/MpOrbSemiCoupledBase.o \
     $O/transportlayer/tcp/flavours/MpOrbSemiCoupledDelta.o \
-    $O/transportlayer/tcp/flavours/MpOrbSemiCoupledGamma.o \
-    $O/transportlayer/tcp/flavours/MpOrbSemiCoupledOmega.o \
+    $O/transportlayer/tcp/flavours/MpOrbSemiCoupledEpsilon.o \
     $O/transportlayer/tcp/flavours/MpOrbUncoupled.o
 
 # Message files

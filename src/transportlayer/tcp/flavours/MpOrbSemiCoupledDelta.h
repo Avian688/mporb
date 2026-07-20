@@ -8,12 +8,12 @@
 #ifndef MPORB_TRANSPORTLAYER_TCP_FLAVOURS_MPORBSEMICOUPLEDDELTA_H_
 #define MPORB_TRANSPORTLAYER_TCP_FLAVOURS_MPORBSEMICOUPLEDDELTA_H_
 
-#include "MpOrbSemiCoupled.h"
+#include "MpOrbSemiCoupledBase.h"
 
 namespace inet {
 namespace tcp {
 
-class MpOrbSemiCoupledDelta : public MpOrbSemiCoupled
+class MpOrbSemiCoupledDelta : public MpOrbSemiCoupledBase
 {
   protected:
     static simsignal_t baseAiRateSignal;
@@ -23,6 +23,7 @@ class MpOrbSemiCoupledDelta : public MpOrbSemiCoupled
     static simsignal_t responsivenessSignal;
     static simsignal_t aiShareSignal;
 
+    bool hasAllocation = false;
     double lastBaseAiRate = 0.0;
     double lastAlphaAiRate = 0.0;
     double lastTargetShare = 0.0;
@@ -30,9 +31,6 @@ class MpOrbSemiCoupledDelta : public MpOrbSemiCoupled
     double lastResponsiveness = 0.0;
     double lastAiShare = 0.0;
 
-    virtual void refreshDeliveryRate();
-    virtual double getDeliveryRate(const MpOrbSemiCoupledDelta *algorithm,
-            const OrbtcpStateVariables *subflowState) const;
     virtual void adjustAdditiveIncrease() override;
 
   public:

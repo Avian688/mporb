@@ -5,7 +5,7 @@
 // (at your option) any later version.
 //
 
-#include "MpOrbSemiCoupledDelta.h"
+#include "MpOrbSemiCoupledEpsilon.h"
 
 #include <algorithm>
 #include <cmath>
@@ -15,30 +15,34 @@
 namespace inet {
 namespace tcp {
 
-Register_Class(MpOrbSemiCoupledDelta);
+Register_Class(MpOrbSemiCoupledEpsilon);
 
-simsignal_t MpOrbSemiCoupledDelta::baseAiRateSignal = cComponent::registerSignal("semiCoupledDeltaBaseAiRate");
-simsignal_t MpOrbSemiCoupledDelta::alphaAiRateSignal = cComponent::registerSignal("semiCoupledDeltaAlphaAiRate");
-simsignal_t MpOrbSemiCoupledDelta::targetShareSignal = cComponent::registerSignal("semiCoupledDeltaTargetShare");
-simsignal_t MpOrbSemiCoupledDelta::rateShareSignal = cComponent::registerSignal("semiCoupledDeltaRateShare");
-simsignal_t MpOrbSemiCoupledDelta::responsivenessSignal = cComponent::registerSignal("semiCoupledDeltaResponsiveness");
-simsignal_t MpOrbSemiCoupledDelta::aiShareSignal = cComponent::registerSignal("semiCoupledDeltaAiShare");
+simsignal_t MpOrbSemiCoupledEpsilon::pathPriceSignal = cComponent::registerSignal("semiCoupledEpsilonPathPrice");
+simsignal_t MpOrbSemiCoupledEpsilon::opportunitySignal = cComponent::registerSignal("semiCoupledEpsilonOpportunity");
+simsignal_t MpOrbSemiCoupledEpsilon::targetShareSignal = cComponent::registerSignal("semiCoupledEpsilonTargetShare");
+simsignal_t MpOrbSemiCoupledEpsilon::rateShareSignal = cComponent::registerSignal("semiCoupledEpsilonRateShare");
+simsignal_t MpOrbSemiCoupledEpsilon::responsivenessSignal = cComponent::registerSignal("semiCoupledEpsilonResponsiveness");
+simsignal_t MpOrbSemiCoupledEpsilon::aiShareSignal = cComponent::registerSignal("semiCoupledEpsilonAiShare");
+simsignal_t MpOrbSemiCoupledEpsilon::aiRateBudgetSignal = cComponent::registerSignal("semiCoupledEpsilonAiRateBudget");
+simsignal_t MpOrbSemiCoupledEpsilon::adjustedAiSignal = cComponent::registerSignal("semiCoupledEpsilonAdjustedAi");
 
-uint32_t MpOrbSemiCoupledDelta::computeWnd(double u, bool updateWc)
+uint32_t MpOrbSemiCoupledEpsilon::computeWnd(double u, bool updateWc)
 {
     const uint32_t result = OrbtcpFlavour::computeWnd(u, updateWc);
     if (updateWc && hasAllocation) {
-        conn->emit(baseAiRateSignal, lastBaseAiRate);
-        conn->emit(alphaAiRateSignal, lastAlphaAiRate);
+        conn->emit(pathPriceSignal, lastPathPrice);
+        conn->emit(opportunitySignal, lastOpportunity);
         conn->emit(targetShareSignal, lastTargetShare);
         conn->emit(rateShareSignal, lastRateShare);
         conn->emit(responsivenessSignal, lastResponsiveness);
         conn->emit(aiShareSignal, lastAiShare);
+        conn->emit(aiRateBudgetSignal, lastAiRateBudget);
+        conn->emit(adjustedAiSignal, static_cast<double>(lastAdjustedAi));
     }
     return result;
 }
 
-void MpOrbSemiCoupledDelta::adjustAdditiveIncrease()
+void MpOrbSemiCoupledEpsilon::adjustAdditiveIncrease()
 {
     refreshDeliveryRate();
     hasAllocation = false;
@@ -53,7 +57,8 @@ void MpOrbSemiCoupledDelta::adjustAdditiveIncrease()
     double targetWeightSum = 0.0;
     size_t validSubflows = 0;
 
-    // First establish the connection rate and normalize Delta's INT target.
+    // A path's opportunity is the inverse of the summed scarcity price of
+    // every INT-reporting hop it consumes.
     for (auto *subflow : metaConnection->getSubflows()) {
         if (subflow == nullptr)
             continue;
@@ -62,26 +67,26 @@ void MpOrbSemiCoupledDelta::adjustAdditiveIncrease()
         if (tcpState != TCP_S_ESTABLISHED && tcpState != TCP_S_CLOSE_WAIT)
             continue;
 
-        auto *algorithm = dynamic_cast<MpOrbSemiCoupledDelta *>(subflow->getTcpAlgorithm());
+        auto *algorithm = dynamic_cast<MpOrbSemiCoupledEpsilon *>(subflow->getTcpAlgorithm());
         if (algorithm == nullptr)
             continue;
 
         const auto *subflowState = static_cast<const OrbtcpStateVariables *>(subflow->getState());
+        const double pathPrice = algorithm->getPathPrice();
         if (subflowState == nullptr || algorithm->observedPathId.empty() ||
-                subflowState->bottBW <= 0.0 || subflowState->srtt <= SIMTIME_ZERO ||
-                algorithm->rtt <= SIMTIME_ZERO ||
-                !std::isfinite(subflowState->u))
+                subflowState->srtt <= SIMTIME_ZERO || algorithm->rtt <= SIMTIME_ZERO ||
+                !std::isfinite(subflowState->u) ||
+                !std::isfinite(pathPrice) || pathPrice <= 0.0)
             continue;
 
         const double rate = getDeliveryRate(algorithm, subflowState);
-        const double connectionCount = std::max(1.0, static_cast<double>(subflowState->sharingFlows));
-        const double fairRate = subflowState->eta * subflowState->bottBW / connectionCount;
+        const double opportunity = 1.0 / pathPrice;
         const double utilizationSafety = subflowState->eta /
                 std::max(subflowState->eta, subflowState->u);
-        const double targetWeight = fairRate * fairRate * utilizationSafety;
-
-        if (!std::isfinite(rate) || rate < 0.0 || !std::isfinite(fairRate) ||
-                fairRate <= 0.0 || !std::isfinite(targetWeight) || targetWeight <= 0.0)
+        // On one hop opportunity equals fairRate, reproducing Delta's target.
+        const double targetWeight = opportunity * opportunity * utilizationSafety;
+        if (!std::isfinite(rate) || rate < 0.0 ||
+                !std::isfinite(targetWeight) || targetWeight <= 0.0)
             continue;
 
         connectionRate += rate;
@@ -96,16 +101,16 @@ void MpOrbSemiCoupledDelta::adjustAdditiveIncrease()
     double alphaAiRateBudget = 0.0;
     double responsiveWeightSum = 0.0;
     bool currentSubflowFound = false;
-    double currentBaseAiRate = 0.0;
-    double currentAlphaAiRate = 0.0;
+    double currentPathPrice = 0.0;
+    double currentOpportunity = 0.0;
     double currentTargetShare = 0.0;
     double currentRateShare = 0.0;
     double currentResponsiveness = 0.0;
     double currentResponsiveWeight = 0.0;
     double currentRtt = 0.0;
 
-    // Alpha sets the connection's total AI-rate budget. Delta's smooth target
-    // allocator redistributes that budget without inheriting Alpha's rate bias.
+    // Retain Alpha's aggregate AI-rate budget, then redistribute it toward
+    // under-served subflows with low total path price.
     for (auto *subflow : metaConnection->getSubflows()) {
         if (subflow == nullptr)
             continue;
@@ -114,29 +119,30 @@ void MpOrbSemiCoupledDelta::adjustAdditiveIncrease()
         if (tcpState != TCP_S_ESTABLISHED && tcpState != TCP_S_CLOSE_WAIT)
             continue;
 
-        auto *algorithm = dynamic_cast<MpOrbSemiCoupledDelta *>(subflow->getTcpAlgorithm());
+        auto *algorithm = dynamic_cast<MpOrbSemiCoupledEpsilon *>(subflow->getTcpAlgorithm());
         if (algorithm == nullptr)
             continue;
 
         const auto *subflowState = static_cast<const OrbtcpStateVariables *>(subflow->getState());
+        const double pathPrice = algorithm->getPathPrice();
         if (subflowState == nullptr || algorithm->observedPathId.empty() ||
                 subflowState->bottBW <= 0.0 || subflowState->srtt <= SIMTIME_ZERO ||
-                algorithm->rtt <= SIMTIME_ZERO ||
-                !std::isfinite(subflowState->u))
+                algorithm->rtt <= SIMTIME_ZERO || !std::isfinite(subflowState->u) ||
+                !std::isfinite(pathPrice) || pathPrice <= 0.0)
             continue;
 
         const double rate = getDeliveryRate(algorithm, subflowState);
-        const double connectionCount = std::max(1.0, static_cast<double>(subflowState->sharingFlows));
-        const double fairRate = subflowState->eta * subflowState->bottBW / connectionCount;
-        const double utilizationSafety = subflowState->eta /
-                std::max(subflowState->eta, subflowState->u);
-        const double targetWeight = fairRate * fairRate * utilizationSafety;
+        const double connectionCount = std::max(1.0,
+                static_cast<double>(subflowState->sharingFlows));
         const double baseAiRate = subflowState->bottBW /
                 connectionCount * subflowState->additiveIncreasePercent;
-
-        if (!std::isfinite(rate) || rate < 0.0 || !std::isfinite(fairRate) ||
-                fairRate <= 0.0 || !std::isfinite(targetWeight) || targetWeight <= 0.0 ||
-                !std::isfinite(baseAiRate) || baseAiRate <= 0.0)
+        const double opportunity = 1.0 / pathPrice;
+        const double utilizationSafety = subflowState->eta /
+                std::max(subflowState->eta, subflowState->u);
+        const double targetWeight = opportunity * opportunity * utilizationSafety;
+        if (!std::isfinite(rate) || rate < 0.0 ||
+                !std::isfinite(baseAiRate) || baseAiRate <= 0.0 ||
+                !std::isfinite(targetWeight) || targetWeight <= 0.0)
             continue;
 
         const double targetShare = targetWeight / targetWeightSum;
@@ -144,7 +150,6 @@ void MpOrbSemiCoupledDelta::adjustAdditiveIncrease()
         const double alphaAiRate = baseAiRate * rateShare;
         const double responsiveness = targetShare / (targetShare + rateShare);
         const double responsiveWeight = targetShare * responsiveness * responsiveness;
-
         if (!std::isfinite(alphaAiRate) || alphaAiRate < 0.0 ||
                 !std::isfinite(responsiveness) || responsiveness <= 0.0 ||
                 !std::isfinite(responsiveWeight) || responsiveWeight <= 0.0)
@@ -155,8 +160,8 @@ void MpOrbSemiCoupledDelta::adjustAdditiveIncrease()
 
         if (algorithm == this) {
             currentSubflowFound = true;
-            currentBaseAiRate = baseAiRate;
-            currentAlphaAiRate = alphaAiRate;
+            currentPathPrice = pathPrice;
+            currentOpportunity = opportunity;
             currentTargetShare = targetShare;
             currentRateShare = rateShare;
             currentResponsiveness = responsiveness;
@@ -165,16 +170,13 @@ void MpOrbSemiCoupledDelta::adjustAdditiveIncrease()
         }
     }
 
-    if (!currentSubflowFound || alphaAiRateBudget <= 0.0 || responsiveWeightSum <= 0.0 ||
-            currentResponsiveWeight <= 0.0 || !std::isfinite(alphaAiRateBudget) ||
-            !std::isfinite(responsiveWeightSum))
+    if (!currentSubflowFound || alphaAiRateBudget <= 0.0 ||
+            responsiveWeightSum <= 0.0 || currentResponsiveWeight <= 0.0 ||
+            !std::isfinite(alphaAiRateBudget) || !std::isfinite(responsiveWeightSum))
         return;
 
-    // Preserve Alpha's aggregate rate increase, then convert this subflow's
-    // allocation back to a window increment using OrbCC's measured RTT.
     const double aiShare = currentResponsiveWeight / responsiveWeightSum;
-    const double aiRate = alphaAiRateBudget * aiShare;
-    const double ai = aiRate * currentRtt;
+    const double ai = alphaAiRateBudget * aiShare * currentRtt;
     if (!std::isfinite(ai) || ai <= 0.0)
         return;
 
@@ -184,12 +186,14 @@ void MpOrbSemiCoupledDelta::adjustAdditiveIncrease()
 
     state->additiveIncrease = adjustedAi;
     hasAllocation = true;
-    lastBaseAiRate = currentBaseAiRate;
-    lastAlphaAiRate = currentAlphaAiRate;
+    lastPathPrice = currentPathPrice;
+    lastOpportunity = currentOpportunity;
     lastTargetShare = currentTargetShare;
     lastRateShare = currentRateShare;
     lastResponsiveness = currentResponsiveness;
     lastAiShare = aiShare;
+    lastAiRateBudget = alphaAiRateBudget;
+    lastAdjustedAi = adjustedAi;
 }
 
 } // namespace tcp
