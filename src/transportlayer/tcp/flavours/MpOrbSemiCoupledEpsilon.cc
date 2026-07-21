@@ -9,6 +9,8 @@
 
 #include <algorithm>
 #include <cmath>
+#include <limits>
+#include <vector>
 
 #include "../../../../../mptcp/src/transportlayer/tcp/MpTcpConnection.h"
 
@@ -17,48 +19,99 @@ namespace tcp {
 
 Register_Class(MpOrbSemiCoupledEpsilon);
 
-simsignal_t MpOrbSemiCoupledEpsilon::pathPriceSignal = cComponent::registerSignal("semiCoupledEpsilonPathPrice");
-simsignal_t MpOrbSemiCoupledEpsilon::opportunitySignal = cComponent::registerSignal("semiCoupledEpsilonOpportunity");
-simsignal_t MpOrbSemiCoupledEpsilon::targetShareSignal = cComponent::registerSignal("semiCoupledEpsilonTargetShare");
+simsignal_t MpOrbSemiCoupledEpsilon::pathCostSignal = cComponent::registerSignal("semiCoupledEpsilonPathCost");
+simsignal_t MpOrbSemiCoupledEpsilon::desiredShareSignal = cComponent::registerSignal("semiCoupledEpsilonDesiredShare");
 simsignal_t MpOrbSemiCoupledEpsilon::rateShareSignal = cComponent::registerSignal("semiCoupledEpsilonRateShare");
-simsignal_t MpOrbSemiCoupledEpsilon::responsivenessSignal = cComponent::registerSignal("semiCoupledEpsilonResponsiveness");
-simsignal_t MpOrbSemiCoupledEpsilon::aiShareSignal = cComponent::registerSignal("semiCoupledEpsilonAiShare");
-simsignal_t MpOrbSemiCoupledEpsilon::aiRateBudgetSignal = cComponent::registerSignal("semiCoupledEpsilonAiRateBudget");
-simsignal_t MpOrbSemiCoupledEpsilon::adjustedAiSignal = cComponent::registerSignal("semiCoupledEpsilonAdjustedAi");
+simsignal_t MpOrbSemiCoupledEpsilon::redistributionSignal = cComponent::registerSignal("semiCoupledEpsilonRedistribution");
+
+namespace {
+
+constexpr double PATH_COST_SHARPNESS = 4.0;
+
+struct SubflowMetrics {
+    MpOrbSemiCoupledEpsilon *algorithm;
+    double rate;
+    double rtt;
+    double baseAiRate;
+    double pathCost = 0.0;
+    double preference = 0.0;
+};
+
+struct HopPriceAggregate {
+    double total = 0.0;
+    size_t samples = 0;
+};
+
+} // namespace
 
 uint32_t MpOrbSemiCoupledEpsilon::computeWnd(double u, bool updateWc)
 {
-    const uint32_t result = OrbtcpFlavour::computeWnd(u, updateWc);
-    if (updateWc && hasAllocation) {
-        conn->emit(pathPriceSignal, lastPathPrice);
-        conn->emit(opportunitySignal, lastOpportunity);
-        conn->emit(targetShareSignal, lastTargetShare);
+    uint32_t result = OrbtcpFlavour::computeWnd(u, updateWc);
+    if (!hasAllocation)
+        return result;
+
+    const long double minimumWindow = std::max(state->snd_mss, 1U);
+    const long double adjustedWindow = std::clamp(
+            static_cast<long double>(result) + pendingRedistribution,
+            minimumWindow,
+            static_cast<long double>(std::numeric_limits<uint32_t>::max()));
+    result = static_cast<uint32_t>(adjustedWindow);
+
+    if (updateWc) {
+        state->prevWnd = result;
+        conn->emit(pathCostSignal, lastPathCost);
+        conn->emit(desiredShareSignal, lastDesiredShare);
         conn->emit(rateShareSignal, lastRateShare);
-        conn->emit(responsivenessSignal, lastResponsiveness);
-        conn->emit(aiShareSignal, lastAiShare);
-        conn->emit(aiRateBudgetSignal, lastAiRateBudget);
-        conn->emit(adjustedAiSignal, static_cast<double>(lastAdjustedAi));
+        conn->emit(redistributionSignal, pendingRedistribution);
     }
     return result;
 }
 
+void MpOrbSemiCoupledEpsilon::updateHopPrices()
+{
+    if (state == nullptr || state->eta <= 0.0 || pathId.empty() || pathHopMetrics.empty())
+        return;
+
+    if (pricedPathId != pathId) {
+        hopPrices.clear();
+        pricedPathId = pathId;
+    }
+
+    for (const auto& hop : pathHopMetrics) {
+        if (hop.hopId < 0 || hop.fairRate <= 0.0 || hop.averageRtt <= 0.0 ||
+                hop.sampleInterval <= 0.0 || !std::isfinite(hop.utilization) ||
+                !std::isfinite(hop.fairRate) || !std::isfinite(hop.sampleInterval) ||
+                !std::isfinite(hop.averageRtt))
+            continue;
+
+        const double basePrice = 1.0 / hop.fairRate;
+        auto insertion = hopPrices.emplace(hop.hopId, basePrice);
+        double& price = insertion.first->second;
+        const double gain = std::clamp(hop.sampleInterval / hop.averageRtt, 0.0, 1.0);
+        const double loadError = hop.utilization / state->eta - 1.0;
+        price = std::max(0.0, price + gain * basePrice * loadError);
+    }
+}
+
 void MpOrbSemiCoupledEpsilon::adjustAdditiveIncrease()
 {
-    refreshDeliveryRate();
     hasAllocation = false;
-    if (firstRTT || state == nullptr || state->initialPhase)
+    pendingRedistribution = 0.0;
+    if (state == nullptr)
+        return;
+
+    refreshDeliveryRate();
+    updateHopPrices();
+    if (firstRTT || state->initialPhase)
         return;
 
     MpTcpConnection *metaConnection = getMetaConnection();
     if (metaConnection == nullptr)
         return;
 
+    std::vector<SubflowMetrics> subflows;
+    std::map<int, HopPriceAggregate> connectionHopPrices;
     double connectionRate = 0.0;
-    double targetWeightSum = 0.0;
-    size_t validSubflows = 0;
-
-    // A path's opportunity is the inverse of the summed scarcity price of
-    // every INT-reporting hop it consumes.
     for (auto *subflow : metaConnection->getSubflows()) {
         if (subflow == nullptr)
             continue;
@@ -72,63 +125,8 @@ void MpOrbSemiCoupledEpsilon::adjustAdditiveIncrease()
             continue;
 
         const auto *subflowState = static_cast<const OrbtcpStateVariables *>(subflow->getState());
-        const double pathPrice = algorithm->getPathPrice();
-        if (subflowState == nullptr || algorithm->observedPathId.empty() ||
-                subflowState->srtt <= SIMTIME_ZERO || algorithm->rtt <= SIMTIME_ZERO ||
-                !std::isfinite(subflowState->u) ||
-                !std::isfinite(pathPrice) || pathPrice <= 0.0)
-            continue;
-
-        const double rate = getDeliveryRate(algorithm, subflowState);
-        const double opportunity = 1.0 / pathPrice;
-        const double utilizationSafety = subflowState->eta /
-                std::max(subflowState->eta, subflowState->u);
-        // On one hop opportunity equals fairRate, reproducing Delta's target.
-        const double targetWeight = opportunity * opportunity * utilizationSafety;
-        if (!std::isfinite(rate) || rate < 0.0 ||
-                !std::isfinite(targetWeight) || targetWeight <= 0.0)
-            continue;
-
-        connectionRate += rate;
-        targetWeightSum += targetWeight;
-        validSubflows++;
-    }
-
-    if (validSubflows <= 1 || connectionRate <= 0.0 || targetWeightSum <= 0.0 ||
-            !std::isfinite(connectionRate) || !std::isfinite(targetWeightSum))
-        return;
-
-    double alphaAiRateBudget = 0.0;
-    double responsiveWeightSum = 0.0;
-    bool currentSubflowFound = false;
-    double currentPathPrice = 0.0;
-    double currentOpportunity = 0.0;
-    double currentTargetShare = 0.0;
-    double currentRateShare = 0.0;
-    double currentResponsiveness = 0.0;
-    double currentResponsiveWeight = 0.0;
-    double currentRtt = 0.0;
-
-    // Retain Alpha's aggregate AI-rate budget, then redistribute it toward
-    // under-served subflows with low total path price.
-    for (auto *subflow : metaConnection->getSubflows()) {
-        if (subflow == nullptr)
-            continue;
-
-        const int tcpState = subflow->getFsmState();
-        if (tcpState != TCP_S_ESTABLISHED && tcpState != TCP_S_CLOSE_WAIT)
-            continue;
-
-        auto *algorithm = dynamic_cast<MpOrbSemiCoupledEpsilon *>(subflow->getTcpAlgorithm());
-        if (algorithm == nullptr)
-            continue;
-
-        const auto *subflowState = static_cast<const OrbtcpStateVariables *>(subflow->getState());
-        const double pathPrice = algorithm->getPathPrice();
-        if (subflowState == nullptr || algorithm->observedPathId.empty() ||
-                subflowState->bottBW <= 0.0 || subflowState->srtt <= SIMTIME_ZERO ||
-                algorithm->rtt <= SIMTIME_ZERO || !std::isfinite(subflowState->u) ||
-                !std::isfinite(pathPrice) || pathPrice <= 0.0)
+        if (subflowState == nullptr || algorithm->pathHopMetrics.empty() ||
+                subflowState->bottBW <= 0.0 || algorithm->rtt <= SIMTIME_ZERO)
             continue;
 
         const double rate = getDeliveryRate(algorithm, subflowState);
@@ -136,64 +134,83 @@ void MpOrbSemiCoupledEpsilon::adjustAdditiveIncrease()
                 static_cast<double>(subflowState->sharingFlows));
         const double baseAiRate = subflowState->bottBW /
                 connectionCount * subflowState->additiveIncreasePercent;
-        const double opportunity = 1.0 / pathPrice;
-        const double utilizationSafety = subflowState->eta /
-                std::max(subflowState->eta, subflowState->u);
-        const double targetWeight = opportunity * opportunity * utilizationSafety;
         if (!std::isfinite(rate) || rate < 0.0 ||
-                !std::isfinite(baseAiRate) || baseAiRate <= 0.0 ||
-                !std::isfinite(targetWeight) || targetWeight <= 0.0)
+                !std::isfinite(baseAiRate) || baseAiRate <= 0.0)
             continue;
 
-        const double targetShare = targetWeight / targetWeightSum;
-        const double rateShare = rate / connectionRate;
-        const double alphaAiRate = baseAiRate * rateShare;
-        const double responsiveness = targetShare / (targetShare + rateShare);
-        const double responsiveWeight = targetShare * responsiveness * responsiveness;
-        if (!std::isfinite(alphaAiRate) || alphaAiRate < 0.0 ||
-                !std::isfinite(responsiveness) || responsiveness <= 0.0 ||
-                !std::isfinite(responsiveWeight) || responsiveWeight <= 0.0)
-            continue;
-
-        alphaAiRateBudget += alphaAiRate;
-        responsiveWeightSum += responsiveWeight;
-
-        if (algorithm == this) {
-            currentSubflowFound = true;
-            currentPathPrice = pathPrice;
-            currentOpportunity = opportunity;
-            currentTargetShare = targetShare;
-            currentRateShare = rateShare;
-            currentResponsiveness = responsiveness;
-            currentResponsiveWeight = responsiveWeight;
-            currentRtt = algorithm->rtt.dbl();
+        subflows.push_back({algorithm, rate, algorithm->rtt.dbl(), baseAiRate});
+        connectionRate += rate;
+        for (const auto& hop : algorithm->pathHopMetrics) {
+            auto price = algorithm->hopPrices.find(hop.hopId);
+            const double value = price != algorithm->hopPrices.end() ?
+                    price->second : 1.0 / hop.fairRate;
+            if (!std::isfinite(value) || value < 0.0)
+                continue;
+            auto& aggregate = connectionHopPrices[hop.hopId];
+            aggregate.total += value;
+            aggregate.samples++;
         }
     }
 
-    if (!currentSubflowFound || alphaAiRateBudget <= 0.0 ||
-            responsiveWeightSum <= 0.0 || currentResponsiveWeight <= 0.0 ||
-            !std::isfinite(alphaAiRateBudget) || !std::isfinite(responsiveWeightSum))
+    if (subflows.size() <= 1 || connectionRate <= 0.0 ||
+            !std::isfinite(connectionRate))
         return;
 
-    const double aiShare = currentResponsiveWeight / responsiveWeightSum;
-    const double ai = alphaAiRateBudget * aiShare * currentRtt;
-    if (!std::isfinite(ai) || ai <= 0.0)
+    double minimumCost = std::numeric_limits<double>::infinity();
+    double averageCost = 0.0;
+    for (auto& subflow : subflows) {
+        for (const auto& hop : subflow.algorithm->pathHopMetrics) {
+            auto price = connectionHopPrices.find(hop.hopId);
+            if (price == connectionHopPrices.end() || price->second.samples == 0)
+                continue;
+            subflow.pathCost += price->second.total / price->second.samples;
+        }
+        minimumCost = std::min(minimumCost, subflow.pathCost);
+        averageCost += subflow.pathCost;
+    }
+
+    averageCost /= subflows.size();
+    if (!std::isfinite(minimumCost) || !std::isfinite(averageCost) || averageCost < 0.0)
+        return;
+    const double costScale = averageCost > 0.0 ? averageCost : 1.0;
+
+    double preferenceSum = 0.0;
+    double aiRateBudget = 0.0;
+    for (auto& subflow : subflows) {
+        const double relativeCost = (subflow.pathCost - minimumCost) / costScale;
+        subflow.preference = std::exp(-relativeCost);
+        preferenceSum += subflow.preference;
+        aiRateBudget += subflow.baseAiRate * (subflow.rate / connectionRate);
+    }
+
+    if (!std::isfinite(preferenceSum) || preferenceSum <= 0.0 ||
+            !std::isfinite(aiRateBudget) || aiRateBudget <= 0.0)
         return;
 
-    uint32_t adjustedAi = ai;
-    if (adjustedAi == 0)
-        adjustedAi = 1;
+    auto current = std::find_if(subflows.begin(), subflows.end(),
+            [this](const SubflowMetrics& subflow) { return subflow.algorithm == this; });
+    if (current == subflows.end())
+        return;
 
-    state->additiveIncrease = adjustedAi;
+    const double desiredShare = current->preference / preferenceSum;
+    const double rateShare = current->rate / connectionRate;
+    const double ai = aiRateBudget * desiredShare * current->rtt;
+    if (!std::isfinite(ai) || ai < 0.0)
+        return;
+
+    const long double boundedAi = std::clamp(static_cast<long double>(ai), 1.0L,
+            static_cast<long double>(std::numeric_limits<uint32_t>::max()));
+    const double redistribution = state->additiveIncreasePercent * connectionRate *
+            (desiredShare - rateShare) * current->rtt;
+    if (!std::isfinite(redistribution))
+        return;
+
+    state->additiveIncrease = static_cast<uint32_t>(boundedAi);
+    pendingRedistribution = redistribution;
     hasAllocation = true;
-    lastPathPrice = currentPathPrice;
-    lastOpportunity = currentOpportunity;
-    lastTargetShare = currentTargetShare;
-    lastRateShare = currentRateShare;
-    lastResponsiveness = currentResponsiveness;
-    lastAiShare = aiShare;
-    lastAiRateBudget = alphaAiRateBudget;
-    lastAdjustedAi = adjustedAi;
+    lastPathCost = current->pathCost;
+    lastDesiredShare = desiredShare;
+    lastRateShare = rateShare;
 }
 
 } // namespace tcp
