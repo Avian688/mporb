@@ -23,18 +23,9 @@ class MpOrbOlia : public MpOrbSemiCoupledAlpha
     static simsignal_t pathOpportunitySignal;
     static simsignal_t normalizedWindowSignal;
 
-    bool hasOliaState = false;
-    bool lastBestPath = false;
-    bool lastMaxWindowPath = false;
-    double pendingCorrection = 0.0;
-    double lastPathPrice = 0.0;
-    double lastPathOpportunity = 0.0;
-    double lastNormalizedWindow = 0.0;
-
+    virtual bool getPathQuality(double& bottleneckFairRate,
+            double& resourceCost) const;
     virtual void adjustAdditiveIncrease() override;
-
-  public:
-    virtual uint32_t computeWnd(double u, bool updateWc) override;
 };
 
 } // namespace tcp

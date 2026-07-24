@@ -34,9 +34,8 @@ OBJS = \
     $O/transportlayer/tcp/flavours/MpOrbSemiCoupledAlpha.o \
     $O/transportlayer/tcp/flavours/MpOrbSemiCoupledBase.o \
     $O/transportlayer/tcp/flavours/MpOrbSemiCoupledBeta.o \
-    $O/transportlayer/tcp/flavours/MpOrbSemiCoupledDelta.o \
     $O/transportlayer/tcp/flavours/MpOrbSemiCoupledEpsilon.o \
-    $O/transportlayer/tcp/flavours/MpOrbSemiCoupledZeta.o \
+    $O/transportlayer/tcp/flavours/MpOrbSemiCoupledTheta.o \
     $O/transportlayer/tcp/flavours/MpOrbUncoupled.o
 
 # Message files

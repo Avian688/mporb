@@ -9,7 +9,6 @@
 
 #include <cmath>
 
-#include "../MpOrbSubflowConnection.h"
 #include "../../../../../mptcp/src/transportlayer/tcp/MpTcpConnection.h"
 
 namespace inet {
@@ -20,12 +19,6 @@ Register_Class(MpOrbSemiCoupledAlpha);
 simsignal_t MpOrbSemiCoupledAlpha::subflowRateSignal = cComponent::registerSignal("semiCoupledAlphaSubflowRate");
 simsignal_t MpOrbSemiCoupledAlpha::connectionRateSignal = cComponent::registerSignal("semiCoupledAlphaConnectionRate");
 simsignal_t MpOrbSemiCoupledAlpha::rateShareSignal = cComponent::registerSignal("semiCoupledAlphaRateShare");
-
-MpTcpConnection *MpOrbSemiCoupledAlpha::getMetaConnection() const
-{
-    auto *subflow = dynamic_cast<MpOrbSubflowConnection *>(conn);
-    return subflow != nullptr ? subflow->getMetaConnection() : nullptr;
-}
 
 void MpOrbSemiCoupledAlpha::adjustAdditiveIncrease()
 {

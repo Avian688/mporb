@@ -26,6 +26,8 @@ class MpOrbUncoupled : public OrbtcpFlavour
   protected:
     virtual IntDataVec getCurrentIntData() const;
 
+    virtual bool isCwndLimited() const override;
+
     virtual void processRexmitTimer(TcpEventCode& event) override;
 
   public:

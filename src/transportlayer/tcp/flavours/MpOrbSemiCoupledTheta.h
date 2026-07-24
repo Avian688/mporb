@@ -5,20 +5,23 @@
 // (at your option) any later version.
 //
 
-#ifndef MPORB_TRANSPORTLAYER_TCP_FLAVOURS_MPORBSEMICOUPLEDZETA_H_
-#define MPORB_TRANSPORTLAYER_TCP_FLAVOURS_MPORBSEMICOUPLEDZETA_H_
+#ifndef MPORB_TRANSPORTLAYER_TCP_FLAVOURS_MPORBSEMICOUPLEDTHETA_H_
+#define MPORB_TRANSPORTLAYER_TCP_FLAVOURS_MPORBSEMICOUPLEDTHETA_H_
 
 #include "MpOrbSemiCoupledBase.h"
 
 namespace inet {
 namespace tcp {
 
-class MpOrbSemiCoupledZeta : public MpOrbSemiCoupledBase
+class MpOrbSemiCoupledTheta : public MpOrbSemiCoupledBase
 {
   protected:
-    static simsignal_t pathCostSignal;
-    static simsignal_t pathWeightSignal;
+    static simsignal_t fairRateSignal;
+    static simsignal_t headroomRateSignal;
+    static simsignal_t aiShareSignal;
     static simsignal_t connectionAiRateSignal;
+
+    simtime_t telemetryUpdatedAt = SIMTIME_ZERO;
 
     virtual void adjustAdditiveIncrease() override;
 };

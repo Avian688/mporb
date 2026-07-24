@@ -6,6 +6,9 @@
 
 #include "MpOrbUncoupled.h"
 
+#include <cstdint>
+
+#include "../../../../../mptcp/src/transportlayer/tcp/MpTcpConnection.h"
 #include "../../../../../tcpPaced/src/transportlayer/tcp/TcpPacedConnection.h"
 #include "../MpOrbSubflowConnection.h"
 
@@ -23,6 +26,25 @@ IntDataVec MpOrbUncoupled::getCurrentIntData() const
     return subflow->getCurrentIntData();
 }
 
+bool MpOrbUncoupled::isCwndLimited() const
+{
+    if (OrbtcpFlavour::isCwndLimited())
+        return true;
+
+    auto *subflow = dynamic_cast<MpOrbSubflowConnection *>(conn);
+    auto *pacedConnection = dynamic_cast<TcpPacedConnection *>(conn);
+    MpTcpConnection *metaConnection =
+            subflow != nullptr ? subflow->getMetaConnection() : nullptr;
+    const uint32_t sendableCwnd = getSendableCwnd();
+    if (pacedConnection == nullptr || metaConnection == nullptr || sendableCwnd == 0)
+        return false;
+
+    const uint64_t usableFlight =
+            static_cast<uint64_t>(pacedConnection->getBytesInFlight()) + state->snd_mss;
+    return metaConnection->getBytesAvailable() > 0 &&
+            usableFlight >= sendableCwnd;
+}
+
 void MpOrbUncoupled::established(bool active)
 {
     state->snd_cwnd = 7300;
@@ -31,6 +53,7 @@ void MpOrbUncoupled::established(bool active)
     connId = std::hash<std::string>{}(conn->localAddr.str() + "/" + std::to_string(conn->localPort) + "/" + conn->remoteAddr.str() + "/" + std::to_string(conn->remotePort));
     initPackets = true;
     EV_DETAIL << "MpOrb initial CWND is set to " << state->snd_cwnd << "\n";
+    conn->emit(cwndLimitedSignal, false);
     if (active) {
         EV_INFO << "Completing connection setup by sending ACK (possibly piggybacked on data)\n";
         sendData(false);
@@ -125,7 +148,7 @@ void MpOrbUncoupled::receivedDataAck(uint32_t firstSeqAcked, IntDataVec intData)
 
     if (uVal > 0) {
         if (!pathChanged)
-            state->snd_cwnd = computeWnd(uVal, updateWindow);
+            state->snd_cwnd = state->snd_cwnd = std::max(state->snd_mss, computeWnd(uVal, updateWindow));
         state->L = intData;
     }
 
@@ -167,7 +190,7 @@ void MpOrbUncoupled::receivedDuplicateAck(uint32_t firstSeqAcked, IntDataVec int
                 conn->emit(recoveryPointSignal, state->recoveryPoint);
                 pacedConn->setSackedHeadLostIfRackDisabled();
                 pacedConn->updateInFlight();
-                setRecoveryCongestionWindow();
+                //setRecoveryCongestionWindow();
                 EV_DETAIL << " recoveryPoint=" << state->recoveryPoint;
                 pacedConn->doRetransmit();
             }
@@ -194,7 +217,7 @@ void MpOrbUncoupled::receivedDuplicateAck(uint32_t firstSeqAcked, IntDataVec int
     double uVal = measureInflight(intData);
     if (uVal > 0) {
         if (!pathChanged)
-            state->snd_cwnd = computeWnd(uVal, updateWindow);
+            state->snd_cwnd = std::max(state->snd_mss, computeWnd(uVal, updateWindow));
         state->L = intData;
     }
     conn->emit(cwndSignal, state->snd_cwnd);

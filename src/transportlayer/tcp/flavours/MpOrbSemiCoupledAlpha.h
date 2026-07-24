@@ -8,21 +8,18 @@
 #ifndef MPORB_TRANSPORTLAYER_TCP_FLAVOURS_MPORBSEMICOUPLEDALPHA_H_
 #define MPORB_TRANSPORTLAYER_TCP_FLAVOURS_MPORBSEMICOUPLEDALPHA_H_
 
-#include "MpOrbUncoupled.h"
+#include "MpOrbSemiCoupledBase.h"
 
 namespace inet {
 namespace tcp {
 
-class MpTcpConnection;
-
-class MpOrbSemiCoupledAlpha : public MpOrbUncoupled
+class MpOrbSemiCoupledAlpha : public MpOrbSemiCoupledBase
 {
   protected:
     static simsignal_t subflowRateSignal;
     static simsignal_t connectionRateSignal;
     static simsignal_t rateShareSignal;
 
-    virtual MpTcpConnection *getMetaConnection() const;
     virtual void adjustAdditiveIncrease() override;
 };
 

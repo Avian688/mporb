@@ -161,8 +161,7 @@ void MpOrbSubflowConnection::sendIntAck(const IntDataVec& intData)
 
     writeHeaderOptions(tcpHeader);
 
-    const uint32_t dataAckNo = metaConn != nullptr ? metaConn->getRcvNxt() : state->rcv_nxt;
-    tcpHeader->addTagIfAbsent<DataSequenceNumberTag>()->setDataSequenceNumber(dataAckNo);
+    tcpHeader->addTagIfAbsent<DataAckTag>()->setDataAck(getDataAckToSend());
 
     auto intTag = tcpHeader->addTagIfAbsent<IntTag>();
     for (const auto& item : intData)

@@ -28,14 +28,12 @@ simsignal_t MpOrbOlia::normalizedWindowSignal = cComponent::registerSignal("mpOr
 
 namespace {
 
-struct SubflowMetrics {
+struct Path {
     MpOrbOlia *algorithm;
-    double rate;
+    double window;
+    double bottleneckFairRate;
+    double resourceCost;
     double rtt;
-    double uncoupledAiRate;
-    double pathPrice;
-    double pathOpportunity;
-    double normalizedWindow;
 };
 
 bool nearlyEqual(double first, double second)
@@ -45,58 +43,59 @@ bool nearlyEqual(double first, double second)
             std::numeric_limits<double>::epsilon() * 32.0 * scale;
 }
 
+bool isBetterPath(const Path& candidate, const Path& currentBest)
+{
+    if (!nearlyEqual(candidate.bottleneckFairRate, currentBest.bottleneckFairRate))
+        return candidate.bottleneckFairRate > currentBest.bottleneckFairRate;
+    if (!nearlyEqual(candidate.resourceCost, currentBest.resourceCost))
+        return candidate.resourceCost < currentBest.resourceCost;
+    return candidate.rtt < currentBest.rtt;
+}
+
+bool isSameBestPath(const Path& candidate, const Path& best)
+{
+    return nearlyEqual(candidate.bottleneckFairRate, best.bottleneckFairRate) &&
+            nearlyEqual(candidate.resourceCost, best.resourceCost) &&
+            nearlyEqual(candidate.rtt, best.rtt);
+}
+
 } // namespace
 
-uint32_t MpOrbOlia::computeWnd(double u, bool updateWc)
+bool MpOrbOlia::getPathQuality(double& bottleneckFairRate,
+        double& resourceCost) const
 {
-    uint32_t result = OrbtcpFlavour::computeWnd(u, updateWc);
-    if (!hasOliaState)
-        return result;
-
-    const long double minimumWindow = std::max(state->snd_mss, 1U);
-    const long double adjustedWindow = std::clamp(
-            static_cast<long double>(result) + pendingCorrection,
-            minimumWindow,
-            static_cast<long double>(std::numeric_limits<uint32_t>::max()));
-    result = static_cast<uint32_t>(adjustedWindow);
-
-    if (updateWc) {
-        state->prevWnd = result;
-        conn->emit(bestPathSignal, lastBestPath ? 1L : 0L);
-        conn->emit(maxWindowPathSignal, lastMaxWindowPath ? 1L : 0L);
-        conn->emit(correctionSignal, pendingCorrection);
-        conn->emit(pathPriceSignal, lastPathPrice);
-        conn->emit(pathOpportunitySignal, lastPathOpportunity);
-        conn->emit(normalizedWindowSignal, lastNormalizedWindow);
+    double inverseFairRate = 0.0;
+    bottleneckFairRate = std::numeric_limits<double>::infinity();
+    for (const auto& hop : pathHopMetrics) {
+        if (!std::isfinite(hop.fairRate) || hop.fairRate <= 0.0)
+            return false;
+        bottleneckFairRate = std::min(bottleneckFairRate, hop.fairRate);
+        inverseFairRate += 1.0 / hop.fairRate;
     }
-    return result;
+
+    resourceCost = bottleneckFairRate * inverseFairRate;
+    return std::isfinite(bottleneckFairRate) && bottleneckFairRate > 0.0 &&
+            std::isfinite(resourceCost) && resourceCost > 0.0;
 }
 
 void MpOrbOlia::adjustAdditiveIncrease()
 {
-    // Alpha supplies the base AI: uncoupled OrbCC AI multiplied by this
-    // subflow's cwnd/srtt share of the whole multipath connection.
+    // Alpha supplies OrbCC AI multiplied by this subflow's share of the
+    // connection rate. With equal RTTs, this is w_r / sum(w).
     MpOrbSemiCoupledAlpha::adjustAdditiveIncrease();
-    if (state == nullptr || firstRTT || state->initialPhase) {
-        hasOliaState = false;
-        pendingCorrection = 0.0;
+    if (state == nullptr || firstRTT || state->initialPhase ||
+            state->snd_mss == 0 || state->srtt <= SIMTIME_ZERO)
         return;
-    }
-
-    // OrbCC commits a window update once per RTT. Keep the same OLIA set
-    // decision between those updates while Alpha refreshes its base AI.
-    if (!updateWindow && hasOliaState)
-        return;
-
-    hasOliaState = false;
-    pendingCorrection = 0.0;
 
     MpTcpConnection *metaConnection = getMetaConnection();
     if (metaConnection == nullptr)
         return;
 
-    std::vector<SubflowMetrics> subflows;
-    double connectionRate = 0.0;
+    std::vector<Path> paths;
+    double sumWindows = 0.0;
+    double maximumWindow = 0.0;
+    Path bestPath = {};
+
     for (auto *subflow : metaConnection->getSubflows()) {
         if (subflow == nullptr)
             continue;
@@ -106,122 +105,77 @@ void MpOrbOlia::adjustAdditiveIncrease()
             continue;
 
         auto *algorithm = dynamic_cast<MpOrbOlia *>(subflow->getTcpAlgorithm());
-        if (algorithm == nullptr)
-            continue;
-
         const auto *subflowState = static_cast<const OrbtcpStateVariables *>(subflow->getState());
-        if (subflowState == nullptr || subflowState->srtt <= SIMTIME_ZERO ||
-                subflowState->bottBW <= 0.0 || !std::isfinite(subflowState->eta) ||
-                subflowState->eta <= 0.0 ||
-                !std::isfinite(subflowState->additiveIncreasePercent) ||
-                subflowState->additiveIncreasePercent <= 0.0 ||
-                algorithm->pathHopMetrics.empty() ||
-                algorithm->pathHopMetrics.size() != subflowState->L.size())
+        if (algorithm == nullptr || subflowState == nullptr ||
+                subflowState->snd_mss == 0 || subflowState->srtt <= SIMTIME_ZERO)
             continue;
 
-        const double connectionCount = std::max(1.0,
-                static_cast<double>(subflowState->sharingFlows));
-        const double rate = subflowState->snd_cwnd / subflowState->srtt.dbl();
-        const double uncoupledAiRate = subflowState->bottBW / connectionCount *
-                subflowState->additiveIncreasePercent;
+        double bottleneckFairRate = 0.0;
+        double resourceCost = 0.0;
+        if (!algorithm->getPathQuality(bottleneckFairRate, resourceCost))
+            return; // Wait until every active subflow has usable INT feedback.
 
-        double pathPrice = 0.0;
-        bool validPath = true;
-        for (const auto& hop : algorithm->pathHopMetrics) {
-            if (!std::isfinite(hop.utilization) ||
-                    !std::isfinite(hop.fairRate) || hop.fairRate <= 0.0) {
-                validPath = false;
-                break;
-            }
-
-            // A serial route pays the scarcity price of every hop it uses.
-            // Utilization below eta keeps the base price; overload raises it.
-            const double pressure = std::max(1.0,
-                    hop.utilization / subflowState->eta);
-            pathPrice += pressure / hop.fairRate;
-        }
-
-        if (!validPath || !std::isfinite(pathPrice) || pathPrice <= 0.0)
-            continue;
-
-        const double pathOpportunity = 1.0 / pathPrice;
-        const double normalizedWindow = rate / pathOpportunity;
-
-        if (!std::isfinite(rate) || rate <= 0.0 ||
-                !std::isfinite(uncoupledAiRate) || uncoupledAiRate <= 0.0 ||
-                !std::isfinite(pathOpportunity) || pathOpportunity <= 0.0 ||
-                !std::isfinite(normalizedWindow))
-            continue;
-
-        subflows.push_back({algorithm, rate, subflowState->srtt.dbl(),
-                uncoupledAiRate, pathPrice, pathOpportunity, normalizedWindow});
-        connectionRate += rate;
+        const double window = std::max(
+                static_cast<double>(subflowState->snd_cwnd) / subflowState->snd_mss,
+                1.0);
+        const double rtt = subflowState->srtt.dbl();
+        paths.push_back({algorithm, window, bottleneckFairRate, resourceCost, rtt});
+        if (paths.size() == 1 || isBetterPath(paths.back(), bestPath))
+            bestPath = paths.back();
+        sumWindows += window;
+        maximumWindow = std::max(maximumWindow, window);
     }
 
-    if (subflows.size() <= 1 || !std::isfinite(connectionRate) ||
-            connectionRate <= 0.0)
+    if (paths.size() <= 1 || sumWindows <= 0.0)
         return;
 
-    double bestPathPrice = std::numeric_limits<double>::infinity();
-    double maximumNormalizedWindow = 0.0;
-    double connectionAiRate = 0.0;
-    for (const auto& subflow : subflows) {
-        bestPathPrice = std::min(bestPathPrice, subflow.pathPrice);
-        maximumNormalizedWindow = std::max(maximumNormalizedWindow,
-                subflow.normalizedWindow);
-        connectionAiRate += subflow.uncoupledAiRate *
-                (subflow.rate / connectionRate);
-    }
-
-    if (!std::isfinite(connectionAiRate) || connectionAiRate <= 0.0)
-        return;
-
-    size_t maxWindowPaths = 0;
+    const Path *currentPath = nullptr;
+    size_t maximumWindowPaths = 0;
     size_t collectedPaths = 0;
-    for (const auto& subflow : subflows) {
-        const bool bestPath = nearlyEqual(subflow.pathPrice, bestPathPrice);
-        const bool maxWindowPath = nearlyEqual(subflow.normalizedWindow,
-                maximumNormalizedWindow);
-        if (maxWindowPath)
-            maxWindowPaths++;
-        if (bestPath && !maxWindowPath)
+    for (const auto& path : paths) {
+        const bool isBestPath = isSameBestPath(path, bestPath);
+        const bool maximumWindowPath = nearlyEqual(path.window, maximumWindow);
+        if (maximumWindowPath)
+            maximumWindowPaths++;
+        if (isBestPath && !maximumWindowPath)
             collectedPaths++;
+        if (path.algorithm == this)
+            currentPath = &path;
     }
 
-    auto current = std::find_if(subflows.begin(), subflows.end(),
-            [this](const SubflowMetrics& subflow) {
-                return subflow.algorithm == this;
-            });
-    if (current == subflows.end())
+    if (currentPath == nullptr)
         return;
 
-    const bool bestPath = nearlyEqual(current->pathPrice, bestPathPrice);
-    const bool maxWindowPath = nearlyEqual(current->normalizedWindow,
-            maximumNormalizedWindow);
-    const bool collectedPath = bestPath && !maxWindowPath;
+    const bool isBestPath = isSameBestPath(*currentPath, bestPath);
+    const bool maximumWindowPath = nearlyEqual(currentPath->window, maximumWindow);
 
-    // This is OLIA's zero-sum opportunistic term translated to OrbCC's
-    // once-per-RTT AI rate. It moves 1/N of Alpha's connection AI budget
-    // from paths with the largest normalized windows to underused best paths.
-    double correctionRate = 0.0;
+    // This is OLIA's a_r definition with B supplied by INT opportunity:
+    // C = B - M receives positive credit and M supplies the same total credit.
+    double alphaR = 0.0;
     if (collectedPaths > 0) {
-        if (collectedPath) {
-            correctionRate = connectionAiRate /
-                    (subflows.size() * collectedPaths);
-        }
-        else if (maxWindowPath) {
-            correctionRate = -connectionAiRate /
-                    (subflows.size() * maxWindowPaths);
-        }
+        if (isBestPath && !maximumWindowPath)
+            alphaR = 1.0 / (paths.size() * collectedPaths);
+        else if (maximumWindowPath)
+            alphaR = -1.0 / (paths.size() * maximumWindowPaths);
     }
 
-    pendingCorrection = correctionRate * current->rtt;
-    hasOliaState = std::isfinite(pendingCorrection);
-    lastBestPath = bestPath;
-    lastMaxWindowPath = maxWindowPath;
-    lastPathPrice = current->pathPrice;
-    lastPathOpportunity = current->pathOpportunity;
-    lastNormalizedWindow = current->normalizedWindow;
+    // OLIA applies a_r / w_r per ACK. OrbCC commits one window update per RTT,
+    // during which roughly w_r packets are acknowledged, so the equivalent
+    // correction is a_r MSS bytes per RTT.
+    const double correctionPerAck = alphaR / currentPath->window;
+    const double correction = correctionPerAck * currentPath->window * state->snd_mss;
+    const double adjustedIncrease = std::clamp(
+            static_cast<double>(state->additiveIncrease) + correction,
+            0.0,
+            static_cast<double>(std::numeric_limits<uint32_t>::max()));
+    state->additiveIncrease = static_cast<uint32_t>(adjustedIncrease);
+
+    conn->emit(bestPathSignal, isBestPath ? 1L : 0L);
+    conn->emit(maxWindowPathSignal, maximumWindowPath ? 1L : 0L);
+    conn->emit(correctionSignal, correction);
+    conn->emit(pathPriceSignal, currentPath->resourceCost);
+    conn->emit(pathOpportunitySignal, currentPath->bottleneckFairRate);
+    conn->emit(normalizedWindowSignal, currentPath->window / sumWindows);
 }
 
 } // namespace tcp

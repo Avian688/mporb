@@ -56,6 +56,7 @@ uint32_t MpOrbSemiCoupledEpsilon::computeWnd(double u, bool updateWc)
             minimumWindow,
             static_cast<long double>(std::numeric_limits<uint32_t>::max()));
     result = static_cast<uint32_t>(adjustedWindow);
+    result = limitCwndGrowth(result, isCwndLimited());
 
     if (updateWc) {
         state->prevWnd = result;
