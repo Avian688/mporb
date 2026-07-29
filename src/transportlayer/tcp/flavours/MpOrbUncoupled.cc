@@ -136,9 +136,16 @@ void MpOrbUncoupled::receivedDataAck(uint32_t firstSeqAcked, IntDataVec intData)
         }
         conn->emit(recoveryPointSignal, state->recoveryPoint);
 
+        // A route change may trigger recovery. Keep the new path's INT sample
+        // as the next baseline without applying a recovery-time cwnd update.
+        double recoveryU = measureInflight(intData);
+        if (recoveryU > 0)
+            state->L = intData;
+
         conn->emit(cwndSignal, state->snd_cwnd);
-        if (!reactTimer->isScheduled())
-            conn->scheduleAt(simTime() + state->srtt.dbl(), reactTimer);
+        updatePacingInterval();
+        if (!reactTimer->isScheduled() && state->srtt > SIMTIME_ZERO)
+            conn->scheduleAt(simTime() + state->srtt, reactTimer);
         conn->emit(sndUnaSignal, state->snd_una);
         conn->emit(sndMaxSignal, state->snd_max);
         return;
@@ -155,17 +162,12 @@ void MpOrbUncoupled::receivedDataAck(uint32_t firstSeqAcked, IntDataVec intData)
     state->lastUpdateSeq = state->snd_nxt;
     conn->emit(cwndSignal, state->snd_cwnd);
 
-    if (state->snd_cwnd > 0) {
-        uint32_t maxWindow = std::max(state->snd_cwnd, dynamic_cast<TcpPacedConnection *>(conn)->getBytesInFlight());
-        uint32_t nominalBandwidth = (maxWindow / state->srtt.dbl());
-        double pace = 1 / ((1.2 * (double)nominalBandwidth) / (double)state->snd_mss);
-        dynamic_cast<TcpPacedConnection *>(conn)->changeIntersendingTime(pace);
-    }
+    updatePacingInterval();
 
     sendData(false);
 
-    if (!reactTimer->isScheduled())
-        conn->scheduleAt(simTime() + state->srtt.dbl(), reactTimer);
+    if (!reactTimer->isScheduled() && state->srtt > SIMTIME_ZERO)
+        conn->scheduleAt(simTime() + state->srtt, reactTimer);
 
     conn->emit(sndUnaSignal, state->snd_una);
     conn->emit(sndMaxSignal, state->snd_max);
@@ -208,9 +210,15 @@ void MpOrbUncoupled::receivedDuplicateAck(uint32_t firstSeqAcked, IntDataVec int
                   << state->snd_cwnd << "\n";
 
     if (state->lossRecovery) {
+        // Duplicate ACKs may be the first feedback from a new route.
+        double recoveryU = measureInflight(intData);
+        if (recoveryU > 0)
+            state->L = intData;
+
         conn->emit(cwndSignal, state->snd_cwnd);
-        if (!reactTimer->isScheduled())
-            conn->scheduleAt(simTime() + state->srtt.dbl(), reactTimer);
+        updatePacingInterval();
+        if (!reactTimer->isScheduled() && state->srtt > SIMTIME_ZERO)
+            conn->scheduleAt(simTime() + state->srtt, reactTimer);
         return;
     }
 
@@ -221,17 +229,12 @@ void MpOrbUncoupled::receivedDuplicateAck(uint32_t firstSeqAcked, IntDataVec int
         state->L = intData;
     }
     conn->emit(cwndSignal, state->snd_cwnd);
-    if (state->snd_cwnd > 0) {
-        uint32_t maxWindow = std::max(state->snd_cwnd, dynamic_cast<TcpPacedConnection *>(conn)->getBytesInFlight());
-        uint32_t nominalBandwidth = (maxWindow / state->srtt.dbl());
-        double pace = 1 / ((1.2 * (double)nominalBandwidth) / (double)state->snd_mss);
-        dynamic_cast<TcpPacedConnection *>(conn)->changeIntersendingTime(pace);
-    }
+    updatePacingInterval();
 
     sendData(false);
 
-    if (!reactTimer->isScheduled())
-        conn->scheduleAt(simTime() + state->srtt.dbl(), reactTimer);
+    if (!reactTimer->isScheduled() && state->srtt > SIMTIME_ZERO)
+        conn->scheduleAt(simTime() + state->srtt, reactTimer);
 }
 
 void MpOrbUncoupled::processRexmitTimer(TcpEventCode& event)

@@ -8,8 +8,6 @@
 #ifndef MPORB_TRANSPORTLAYER_TCP_FLAVOURS_MPORBSEMICOUPLEDEPSILON_H_
 #define MPORB_TRANSPORTLAYER_TCP_FLAVOURS_MPORBSEMICOUPLEDEPSILON_H_
 
-#include <map>
-
 #include "MpOrbSemiCoupledBase.h"
 
 namespace inet {
@@ -23,19 +21,12 @@ class MpOrbSemiCoupledEpsilon : public MpOrbSemiCoupledBase
     static simsignal_t rateShareSignal;
     static simsignal_t redistributionSignal;
 
-    std::map<int, double> hopPrices;
-    std::vector<bool> pricedPathId;
-    bool hasAllocation = false;
-    double lastPathCost = 0.0;
-    double lastDesiredShare = 0.0;
-    double lastRateShare = 0.0;
-    double pendingRedistribution = 0.0;
+    simtime_t telemetryUpdatedAt = SIMTIME_ZERO;
+    int pricedBottleneckId = -1;
+    double bottleneckPrice = 0.0;
 
-    virtual void updateHopPrices();
+    virtual void updateBottleneckPrice();
     virtual void adjustAdditiveIncrease() override;
-
-  public:
-    virtual uint32_t computeWnd(double u, bool updateWc) override;
 };
 
 } // namespace tcp
