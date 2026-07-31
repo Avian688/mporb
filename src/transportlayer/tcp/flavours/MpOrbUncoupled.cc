@@ -131,9 +131,6 @@ void MpOrbUncoupled::receivedDataAck(uint32_t firstSeqAcked, IntDataVec intData)
             EV_INFO << "Loss Recovery terminated.\n";
             state->lossRecovery = false;
         }
-        else {
-            dynamic_cast<TcpPacedConnection *>(conn)->doRetransmit();
-        }
         conn->emit(recoveryPointSignal, state->recoveryPoint);
 
         // A route change may trigger recovery. Keep the new path's INT sample
