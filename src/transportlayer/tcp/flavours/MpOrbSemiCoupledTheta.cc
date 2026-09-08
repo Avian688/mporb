@@ -28,7 +28,8 @@ void MpOrbSemiCoupledTheta::adjustAdditiveIncrease()
     if (state == nullptr)
         return;
 
-    if (!pathHopMetrics.empty() && bottleneckId >= 0)
+    if (bottleneckId >= 0 && state->bottBW > 0 &&
+            state->sharingFlows > 0 && state->u > 0)
         telemetryUpdatedAt = simTime();
 
     // Keep OrbCC's startup unchanged and couple only its steady-state AI.
@@ -71,7 +72,7 @@ void MpOrbSemiCoupledTheta::adjustAdditiveIncrease()
         return;
 
     // Alpha is the safe fallback whenever the connection lacks a complete,
-    // recent INT view. Theta only redistributes this same growth budget.
+    // recent PINT view. Theta only redistributes this same growth budget.
     const double alphaRateShare = currentRate / connectionRate;
     const uint32_t uncoupledAi = state->additiveIncrease;
     if (uncoupledAi > 0) {
@@ -100,7 +101,7 @@ void MpOrbSemiCoupledTheta::adjustAdditiveIncrease()
         if (algorithm == nullptr || subflowState == nullptr ||
                 algorithm->telemetryUpdatedAt == SIMTIME_ZERO ||
                 subflowState->srtt <= SIMTIME_ZERO || algorithm->rtt <= SIMTIME_ZERO ||
-                algorithm->pathHopMetrics.empty() || algorithm->bottleneckId < 0 ||
+                algorithm->bottleneckId < 0 ||
                 simTime() - algorithm->telemetryUpdatedAt > subflowState->srtt * 2 ||
                 !std::isfinite(subflowState->u) || !std::isfinite(subflowState->eta) ||
                 subflowState->eta <= 0.0 || !std::isfinite(subflowState->bottBW) ||

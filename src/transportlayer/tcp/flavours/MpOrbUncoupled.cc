@@ -6,9 +6,6 @@
 
 #include "MpOrbUncoupled.h"
 
-#include <cstdint>
-
-#include "../../../../../mptcp/src/transportlayer/tcp/MpTcpConnection.h"
 #include "../../../../../tcpPaced/src/transportlayer/tcp/TcpPacedConnection.h"
 #include "../MpOrbSubflowConnection.h"
 
@@ -26,28 +23,10 @@ IntDataVec MpOrbUncoupled::getCurrentIntData() const
     return subflow->getCurrentIntData();
 }
 
-bool MpOrbUncoupled::isCwndLimited() const
-{
-    if (OrbtcpFlavour::isCwndLimited())
-        return true;
-
-    auto *subflow = dynamic_cast<MpOrbSubflowConnection *>(conn);
-    auto *pacedConnection = dynamic_cast<TcpPacedConnection *>(conn);
-    MpTcpConnection *metaConnection =
-            subflow != nullptr ? subflow->getMetaConnection() : nullptr;
-    const uint32_t sendableCwnd = getSendableCwnd();
-    if (pacedConnection == nullptr || metaConnection == nullptr || sendableCwnd == 0)
-        return false;
-
-    const uint64_t usableFlight =
-            static_cast<uint64_t>(pacedConnection->getBytesInFlight()) + state->snd_mss;
-    return metaConnection->getBytesAvailable() > 0 &&
-            usableFlight >= sendableCwnd;
-}
-
 void MpOrbUncoupled::established(bool active)
 {
     state->snd_cwnd = 7300;
+    state->prevWnd = state->snd_cwnd;
     dynamic_cast<TcpPacedConnection *>(conn)->changeIntersendingTime(0.000001);
     state->ssthresh = 73000;
     connId = std::hash<std::string>{}(conn->localAddr.str() + "/" + std::to_string(conn->localPort) + "/" + conn->remoteAddr.str() + "/" + std::to_string(conn->remotePort));
@@ -66,7 +45,7 @@ void MpOrbUncoupled::receiveSeqChanged()
     receiveSeqChanged(getCurrentIntData());
 }
 
-void MpOrbUncoupled::receiveSeqChanged(IntDataVec intData)
+void MpOrbUncoupled::receiveSeqChanged(const IntDataVec& intData)
 {
     if (state->full_sized_segment_counter == 0 && !state->ack_now && state->last_ack_sent == state->rcv_nxt && !delayedAckTimer->isScheduled()) {
     }
@@ -105,7 +84,7 @@ void MpOrbUncoupled::receivedOutOfOrderSegment()
     receivedOutOfOrderSegment(getCurrentIntData());
 }
 
-void MpOrbUncoupled::receivedOutOfOrderSegment(IntDataVec intData)
+void MpOrbUncoupled::receivedOutOfOrderSegment(const IntDataVec& intData)
 {
     state->ack_now = true;
     EV_INFO << "Out-of-order segment, sending immediate ACK\n";
@@ -120,54 +99,9 @@ void MpOrbUncoupled::receivedDataAck(uint32_t firstSeqAcked)
     receivedDataAck(firstSeqAcked, getCurrentIntData());
 }
 
-void MpOrbUncoupled::receivedDataAck(uint32_t firstSeqAcked, IntDataVec intData)
+void MpOrbUncoupled::receivedDataAck(uint32_t firstSeqAcked, const IntDataVec& intData)
 {
-    TcpTahoeRenoFamily::receivedDataAck(firstSeqAcked);
-    EV_INFO << "\nMPORBInfo ___________________________________________" << endl;
-    EV_INFO << "\nMPORBInfo - Received Data Ack" << endl;
-    bool wasInLossRecovery = state->lossRecovery && state->sack_enabled;
-    if (wasInLossRecovery) {
-        if (seqGE(state->snd_una, state->recoveryPoint)) {
-            EV_INFO << "Loss Recovery terminated.\n";
-            state->lossRecovery = false;
-        }
-        conn->emit(recoveryPointSignal, state->recoveryPoint);
-
-        // A route change may trigger recovery. Keep the new path's INT sample
-        // as the next baseline without applying a recovery-time cwnd update.
-        double recoveryU = measureInflight(intData);
-        if (recoveryU > 0)
-            state->L = intData;
-
-        conn->emit(cwndSignal, state->snd_cwnd);
-        updatePacingInterval();
-        if (!reactTimer->isScheduled() && state->srtt > SIMTIME_ZERO)
-            conn->scheduleAt(simTime() + state->srtt, reactTimer);
-        conn->emit(sndUnaSignal, state->snd_una);
-        conn->emit(sndMaxSignal, state->snd_max);
-        return;
-    }
-
-    double uVal = measureInflight(intData);
-
-    if (uVal > 0) {
-        if (!pathChanged)
-            state->snd_cwnd = state->snd_cwnd = std::max(state->snd_mss, computeWnd(uVal, updateWindow));
-        state->L = intData;
-    }
-
-    state->lastUpdateSeq = state->snd_nxt;
-    conn->emit(cwndSignal, state->snd_cwnd);
-
-    updatePacingInterval();
-
-    sendData(false);
-
-    if (!reactTimer->isScheduled() && state->srtt > SIMTIME_ZERO)
-        conn->scheduleAt(simTime() + state->srtt, reactTimer);
-
-    conn->emit(sndUnaSignal, state->snd_una);
-    conn->emit(sndMaxSignal, state->snd_max);
+    OrbtcpPintFlavour::receivedDataAck(firstSeqAcked, intData);
 }
 
 void MpOrbUncoupled::receivedDuplicateAck()
@@ -175,67 +109,15 @@ void MpOrbUncoupled::receivedDuplicateAck()
     receivedDuplicateAck(state->snd_una, getCurrentIntData());
 }
 
-void MpOrbUncoupled::receivedDuplicateAck(uint32_t firstSeqAcked, IntDataVec intData)
+void MpOrbUncoupled::receivedDuplicateAck(uint32_t firstSeqAcked, const IntDataVec& intData)
 {
-    state->initialPhase = false;
-    auto pacedConn = dynamic_cast<TcpPacedConnection *>(conn);
-    if (shouldEnterLossRecoveryOnDuplicateAck()) {
-        EV_INFO << "Reno on dupAcks == DUPTHRESH(=" << state->dupthresh << ": perform Fast Retransmit, and enter Fast Recovery:";
-
-        if (state->sack_enabled) {
-            if ((state->recoveryPoint == 0 || seqGE(state->snd_una, state->recoveryPoint)) && !state->lossRecovery) {
-                state->recoveryPoint = state->snd_max;
-                state->lossRecovery = true;
-                conn->emit(recoveryPointSignal, state->recoveryPoint);
-                pacedConn->setSackedHeadLostIfRackDisabled();
-                pacedConn->updateInFlight();
-                //setRecoveryCongestionWindow();
-                EV_DETAIL << " recoveryPoint=" << state->recoveryPoint;
-                pacedConn->doRetransmit();
-            }
-        }
-
-        if (state->sack_enabled) {
-            if (state->lossRecovery) {
-                EV_INFO << "Retransmission sent during recovery, restarting REXMIT timer.\n";
-                restartRexmitTimer();
-            }
-        }
-    }
-    else if (state->lossRecovery && state->dupacks > state->dupthresh)
-        EV_DETAIL << "Additional duplicate ACK during RACK recovery; cwnd remains "
-                  << state->snd_cwnd << "\n";
-
-    if (state->lossRecovery) {
-        // Duplicate ACKs may be the first feedback from a new route.
-        double recoveryU = measureInflight(intData);
-        if (recoveryU > 0)
-            state->L = intData;
-
-        conn->emit(cwndSignal, state->snd_cwnd);
-        updatePacingInterval();
-        if (!reactTimer->isScheduled() && state->srtt > SIMTIME_ZERO)
-            conn->scheduleAt(simTime() + state->srtt, reactTimer);
-        return;
-    }
-
-    double uVal = measureInflight(intData);
-    if (uVal > 0) {
-        if (!pathChanged)
-            state->snd_cwnd = std::max(state->snd_mss, computeWnd(uVal, updateWindow));
-        state->L = intData;
-    }
-    conn->emit(cwndSignal, state->snd_cwnd);
-    updatePacingInterval();
-
-    sendData(false);
-
-    if (!reactTimer->isScheduled() && state->srtt > SIMTIME_ZERO)
-        conn->scheduleAt(simTime() + state->srtt, reactTimer);
+    OrbtcpPintFlavour::receivedDuplicateAck(firstSeqAcked, intData);
 }
 
 void MpOrbUncoupled::processRexmitTimer(TcpEventCode& event)
 {
+    state->initialPhase = false;
+    state->endInitialPhase = false;
     TcpPacedFamily::processRexmitTimer(event);
     if (event == TCP_E_ABORT)
         return;
@@ -247,6 +129,7 @@ void MpOrbUncoupled::processRexmitTimer(TcpEventCode& event)
     auto *pacedConnection = check_and_cast<TcpPacedConnection *>(conn);
     pacedConnection->cancelPaceTimer();
     pacedConnection->retransmitOneSegment(true);
+    state->prevWnd = state->snd_cwnd;
 }
 
 } // namespace tcp

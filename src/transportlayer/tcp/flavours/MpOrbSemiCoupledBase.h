@@ -8,7 +8,7 @@
 #ifndef MPORB_TRANSPORTLAYER_TCP_FLAVOURS_MPORBSEMICOUPLEDBASE_H_
 #define MPORB_TRANSPORTLAYER_TCP_FLAVOURS_MPORBSEMICOUPLEDBASE_H_
 
-#include <vector>
+#include <cstdint>
 
 #include "MpOrbUncoupled.h"
 
@@ -27,7 +27,8 @@ class MpOrbSemiCoupledBase : public MpOrbUncoupled
   protected:
     double smoothedDeliveryRate = 0.0;
     simtime_t deliveryRateUpdatedAt = SIMTIME_ZERO;
-    std::vector<bool> observedPathId;
+    uint32_t observedPathDigest = 0;
+    bool hasObservedPathDigest = false;
 
     virtual MpTcpConnection *getMetaConnection() const;
     virtual void refreshDeliveryRate();

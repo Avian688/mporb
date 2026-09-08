@@ -75,9 +75,11 @@ void MpOrbSemiCoupledEpsilon::adjustAdditiveIncrease()
         return;
 
     refreshDeliveryRate();
-    if (!pathHopMetrics.empty() && bottleneckId >= 0) {
+    if (bottleneckId >= 0 && state->bottBW > 0 &&
+            state->sharingFlows > 0 && state->u > 0) {
         telemetryUpdatedAt = simTime();
-        updateBottleneckPrice();
+        if (updateWindow)
+            updateBottleneckPrice();
     }
 
     // Learn scarcity during startup, but leave OrbCC's startup window unchanged.
@@ -106,13 +108,13 @@ void MpOrbSemiCoupledEpsilon::adjustAdditiveIncrease()
         const auto *subflowState =
                 static_cast<const OrbtcpStateVariables *>(subflow->getState());
 
-        // Do not calculate connection shares from a partial INT view.
+        // Do not calculate connection shares from a partial PINT view.
         if (algorithm == nullptr || subflowState == nullptr ||
                 algorithm->firstRTT || subflowState->initialPhase ||
                 subflowState->srtt <= SIMTIME_ZERO ||
                 algorithm->telemetryUpdatedAt == SIMTIME_ZERO ||
                 simTime() - algorithm->telemetryUpdatedAt > subflowState->srtt * 2 ||
-                algorithm->pathHopMetrics.empty() || algorithm->bottleneckId < 0 ||
+                algorithm->bottleneckId < 0 ||
                 !std::isfinite(algorithm->bottleneckPrice) ||
                 algorithm->bottleneckPrice < 0.0 ||
                 !std::isfinite(subflowState->eta) || subflowState->eta <= 0.0 ||

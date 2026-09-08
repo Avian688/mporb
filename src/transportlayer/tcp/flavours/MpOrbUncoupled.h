@@ -16,17 +16,15 @@
 #ifndef MPORB_TRANSPORTLAYER_TCP_FLAVOURS_MPORBUNCOUPLED_H_
 #define MPORB_TRANSPORTLAYER_TCP_FLAVOURS_MPORBUNCOUPLED_H_
 
-#include "../../../../../orbtcp/src/transportlayer/orbtcp/flavours/OrbtcpFlavour.h"
+#include "../../../../../orbtcp/src/transportlayer/orbtcp/flavours/OrbtcpPintFlavour.h"
 
 namespace inet {
 namespace tcp {
 
-class MpOrbUncoupled : public OrbtcpFlavour
+class MpOrbUncoupled : public OrbtcpPintFlavour
 {
   protected:
     virtual IntDataVec getCurrentIntData() const;
-
-    virtual bool isCwndLimited() const override;
 
     virtual void processRexmitTimer(TcpEventCode& event) override;
 
@@ -34,16 +32,16 @@ class MpOrbUncoupled : public OrbtcpFlavour
     virtual void established(bool active) override;
 
     virtual void receiveSeqChanged() override;
-    virtual void receiveSeqChanged(IntDataVec intData) override;
+    virtual void receiveSeqChanged(const IntDataVec& intData) override;
 
     virtual void receivedOutOfOrderSegment() override;
-    virtual void receivedOutOfOrderSegment(IntDataVec intData) override;
+    virtual void receivedOutOfOrderSegment(const IntDataVec& intData) override;
 
     virtual void receivedDataAck(uint32_t firstSeqAcked) override;
-    virtual void receivedDataAck(uint32_t firstSeqAcked, IntDataVec intData) override;
+    virtual void receivedDataAck(uint32_t firstSeqAcked, const IntDataVec& intData) override;
 
     virtual void receivedDuplicateAck() override;
-    virtual void receivedDuplicateAck(uint32_t firstSeqAcked, IntDataVec intData) override;
+    virtual void receivedDuplicateAck(uint32_t firstSeqAcked, const IntDataVec& intData) override;
 };
 
 } // namespace tcp

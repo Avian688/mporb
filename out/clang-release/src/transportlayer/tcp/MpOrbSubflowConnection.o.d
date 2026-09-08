@@ -119,7 +119,9 @@
   ../../inet4.5/src/inet/common/socket/ISocket.h \
   transportlayer/tcp/../../../../mptcp/src/transportlayer/tcp/MpTcpFlowScheduler.h \
   transportlayer/tcp/../../../../mptcp/src/transportlayer/tcp/MpTcpPacketScheduler.h \
+  transportlayer/tcp/../../../../orbtcp/src/common/PintSenderTelemetry.h \
   transportlayer/tcp/flavours/MpOrbUncoupled.h \
+  transportlayer/tcp/flavours/../../../../../orbtcp/src/transportlayer/orbtcp/flavours/OrbtcpPintFlavour.h \
   transportlayer/tcp/flavours/../../../../../orbtcp/src/transportlayer/orbtcp/flavours/OrbtcpFlavour.h \
   transportlayer/tcp/flavours/../../../../../orbtcp/src/transportlayer/orbtcp/flavours/../../../common/IntTag_m.h \
   transportlayer/tcp/flavours/../../../../../orbtcp/src/transportlayer/orbtcp/flavours/../OrbtcpConnection.h \
@@ -248,7 +250,9 @@ transportlayer/tcp/../../../../mptcp/src/transportlayer/tcp/MpTcpConnection.h:
 ../../inet4.5/src/inet/common/socket/ISocket.h:
 transportlayer/tcp/../../../../mptcp/src/transportlayer/tcp/MpTcpFlowScheduler.h:
 transportlayer/tcp/../../../../mptcp/src/transportlayer/tcp/MpTcpPacketScheduler.h:
+transportlayer/tcp/../../../../orbtcp/src/common/PintSenderTelemetry.h:
 transportlayer/tcp/flavours/MpOrbUncoupled.h:
+transportlayer/tcp/flavours/../../../../../orbtcp/src/transportlayer/orbtcp/flavours/OrbtcpPintFlavour.h:
 transportlayer/tcp/flavours/../../../../../orbtcp/src/transportlayer/orbtcp/flavours/OrbtcpFlavour.h:
 transportlayer/tcp/flavours/../../../../../orbtcp/src/transportlayer/orbtcp/flavours/../../../common/IntTag_m.h:
 transportlayer/tcp/flavours/../../../../../orbtcp/src/transportlayer/orbtcp/flavours/../OrbtcpConnection.h:

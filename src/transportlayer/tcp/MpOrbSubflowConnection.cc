@@ -18,6 +18,7 @@
 #include <cstring>
 
 #include "../../../../mptcp/src/transportlayer/tcp/MpTcpConnection.h"
+#include "../../../../orbtcp/src/common/PintSenderTelemetry.h"
 #include "flavours/MpOrbUncoupled.h"
 
 namespace inet {
@@ -123,15 +124,36 @@ bool MpOrbSubflowConnection::processAckInEstabEtc(Packet *tcpSegment, const Ptr<
     return ok;
 }
 
+void MpOrbSubflowConnection::updateAckTelemetry(const Ptr<const TcpHeader>& tcpHeader)
+{
+    auto *orbAlgorithm = dynamic_cast<OrbtcpFamily *>(tcpAlgorithm);
+    if (orbAlgorithm == nullptr)
+        return;
+
+    if (tcpHeader != nullptr && tcpHeader->findTag<IntTag>())
+        orbAlgorithm->updateRttTelemetry(tcpHeader->getTag<IntTag>()->getIntData());
+    else
+        orbAlgorithm->updateRttTelemetry({});
+}
+
 void MpOrbSubflowConnection::sendToIP(Packet *tcpSegment, const Ptr<TcpHeader>& tcpHeader)
 {
     if (tcpSegment != nullptr && tcpHeader != nullptr && tcpSegment->getByteLength() > 0 && !tcpHeader->findTag<IntTag>()) {
         auto *orbAlg = dynamic_cast<OrbtcpFamily *>(tcpAlgorithm);
         if (orbAlg != nullptr) {
             auto intTag = tcpHeader->addTagIfAbsent<IntTag>();
+            const simtime_t estimatedRtt = orbAlg->getEstimatedRtt();
+            const uint32_t cwnd = orbAlg->getCwnd();
             intTag->setConnId(static_cast<unsigned long>(orbAlg->getConnId()));
-            intTag->setRtt(orbAlg->getEstimatedRtt());
-            intTag->setCwnd(orbAlg->getCwnd());
+            intTag->setRtt(estimatedRtt);
+            intTag->setCwnd(cwnd);
+            if (orbAlg->usesPintTelemetry()) {
+                intTag->setRtt(orbAlg->getRtt());
+                if (tcpMain->par("pintUseAverageRtt").boolValue()) {
+                    intTag->setPintBaseRttCode(pint::encodeBaseRtt(estimatedRtt.dbl()));
+                    intTag->setPintCwndCode(pint::encodeCwnd(cwnd));
+                }
+            }
             intTag->setInitialPhase(orbAlg->getInitialPhase());
 
             uint32_t endSeqNo = tcpHeader->getSequenceNo() + tcpSegment->getByteLength();

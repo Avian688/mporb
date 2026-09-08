@@ -64,16 +64,15 @@ bool isSameBestPath(const Path& candidate, const Path& best)
 bool MpOrbOlia::getPathQuality(double& bottleneckFairRate,
         double& resourceCost) const
 {
-    double inverseFairRate = 0.0;
-    bottleneckFairRate = std::numeric_limits<double>::infinity();
-    for (const auto& hop : pathHopMetrics) {
-        if (!std::isfinite(hop.fairRate) || hop.fairRate <= 0.0)
-            return false;
-        bottleneckFairRate = std::min(bottleneckFairRate, hop.fairRate);
-        inverseFairRate += 1.0 / hop.fairRate;
-    }
+    if (state == nullptr || bottleneckId < 0 ||
+            !std::isfinite(state->eta) || state->eta <= 0.0 ||
+            !std::isfinite(state->bottBW) || state->bottBW <= 0.0 ||
+            state->sharingFlows <= 0 ||
+            !std::isfinite(state->u) || state->u <= 0.0)
+        return false;
 
-    resourceCost = bottleneckFairRate * inverseFairRate;
+    bottleneckFairRate = state->eta * state->bottBW / state->sharingFlows;
+    resourceCost = state->u / state->eta;
     return std::isfinite(bottleneckFairRate) && bottleneckFairRate > 0.0 &&
             std::isfinite(resourceCost) && resourceCost > 0.0;
 }
@@ -113,7 +112,7 @@ void MpOrbOlia::adjustAdditiveIncrease()
         double bottleneckFairRate = 0.0;
         double resourceCost = 0.0;
         if (!algorithm->getPathQuality(bottleneckFairRate, resourceCost))
-            return; // Wait until every active subflow has usable INT feedback.
+            return; // Wait until every active subflow has usable PINT feedback.
 
         const double window = std::max(
                 static_cast<double>(subflowState->snd_cwnd) / subflowState->snd_mss,
@@ -149,7 +148,7 @@ void MpOrbOlia::adjustAdditiveIncrease()
     const bool isBestPath = isSameBestPath(*currentPath, bestPath);
     const bool maximumWindowPath = nearlyEqual(currentPath->window, maximumWindow);
 
-    // This is OLIA's a_r definition with B supplied by INT opportunity:
+    // This is OLIA's a_r definition with B supplied by PINT opportunity:
     // C = B - M receives positive credit and M supplies the same total credit.
     double alphaR = 0.0;
     if (collectedPaths > 0) {

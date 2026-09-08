@@ -28,4 +28,10 @@ simple MpOrb extends MpTcp
         double additiveIncreasePercent = default(0.05);
         double eta = default(0.95);
         double alpha = default(0.03);
+        double pintFeedbackProbability = default(1);
+        int pintFlowCountBits = default(8);
+        int pintMaxFlowCount = default(65535);
+        bool pintUseAverageRtt = default(true);
+        bool pintUseInitialPhase = default(true);
+        bool pintUseInitialPhaseFlowCount = default(true);
 }

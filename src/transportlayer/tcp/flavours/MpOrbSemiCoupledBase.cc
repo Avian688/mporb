@@ -31,12 +31,13 @@ MpTcpConnection *MpOrbSemiCoupledBase::getMetaConnection() const
 
 void MpOrbSemiCoupledBase::refreshDeliveryRate()
 {
-    if (!pathId.empty()) {
-        if (!observedPathId.empty() && observedPathId != pathId) {
+    if (hasPathDigest) {
+        if (hasObservedPathDigest && observedPathDigest != lastPathDigest) {
             smoothedDeliveryRate = 0.0;
             deliveryRateUpdatedAt = SIMTIME_ZERO;
         }
-        observedPathId = pathId;
+        observedPathDigest = lastPathDigest;
+        hasObservedPathDigest = true;
     }
 
     auto *pacedConnection = dynamic_cast<TcpPacedConnection *>(conn);
@@ -70,7 +71,7 @@ double MpOrbSemiCoupledBase::getDeliveryRate(const MpOrbSemiCoupledBase *algorit
     if (simTime() - algorithm->deliveryRateUpdatedAt > subflowState->srtt * 2)
         deliveryRate = 0.0;
 
-    // txRate is aggregate bottleneck service measured from INT txBytes. It is
+    // txRate is aggregate bottleneck service reconstructed from PINT U and B. It is
     // not a per-subflow rate, but it is a useful upper bound on a stale sample.
     if (subflowState->txRate > 0.0 && std::isfinite(subflowState->txRate))
         deliveryRate = std::min(deliveryRate, subflowState->txRate);
