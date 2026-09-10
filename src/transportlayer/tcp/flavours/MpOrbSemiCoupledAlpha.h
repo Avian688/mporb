@@ -21,6 +21,8 @@ class MpOrbSemiCoupledAlpha : public MpOrbSemiCoupledBase
     static simsignal_t rateShareSignal;
 
     virtual void adjustAdditiveIncrease() override;
+
+    double additiveIncreaseResidual = 0.0;
 };
 
 } // namespace tcp

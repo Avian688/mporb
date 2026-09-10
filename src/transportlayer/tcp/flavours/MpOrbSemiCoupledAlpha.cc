@@ -57,10 +57,13 @@ void MpOrbSemiCoupledAlpha::adjustAdditiveIncrease()
 
     double rateShare = rate / connectionRate;
     const uint32_t uncoupledAi = state->additiveIncrease;
+
     if (uncoupledAi > 0) {
-        state->additiveIncrease = uncoupledAi * rateShare;
-        if (state->additiveIncrease == 0)
-            state->additiveIncrease = 1;
+        const double exactAi = static_cast<double>(uncoupledAi) * rateShare + additiveIncreaseResidual;
+        const uint32_t coupledAi = static_cast<uint32_t>(exactAi);
+
+        additiveIncreaseResidual = exactAi - coupledAi;
+        state->additiveIncrease = coupledAi;
     }
 
     conn->emit(subflowRateSignal, rate);
