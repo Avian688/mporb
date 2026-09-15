@@ -117,7 +117,21 @@
   transportlayer/tcp/../../../../mptcp/src/transportlayer/tcp/MpTcpPacketScheduler.h \
   transportlayer/tcp/../../../../mptcp/src/transportlayer/tcp/SubflowConnection.h \
   transportlayer/tcp/../../../../mptcp/src/transportlayer/tcp/TcpOpenSubflowCommand_m.h \
-  transportlayer/tcp/../../../../mptcp/src/transportlayer/tcp/../../common/DataSequenceNumberTag_m.h
+  transportlayer/tcp/../../../../mptcp/src/transportlayer/tcp/../../common/DataSequenceNumberTag_m.h \
+  transportlayer/tcp/../../../../orbtcp/src/common/IntTag_m.h \
+  transportlayer/tcp/flavours/MpOrbPressure.h \
+  transportlayer/tcp/flavours/MpOrbUncoupled.h \
+  transportlayer/tcp/flavours/../../../../../orbtcp/src/transportlayer/orbtcp/flavours/OrbtcpPintFlavour.h \
+  transportlayer/tcp/flavours/../../../../../orbtcp/src/transportlayer/orbtcp/flavours/OrbtcpFlavour.h \
+  transportlayer/tcp/flavours/../../../../../orbtcp/src/transportlayer/orbtcp/flavours/../../../common/IntTag_m.h \
+  transportlayer/tcp/flavours/../../../../../orbtcp/src/transportlayer/orbtcp/flavours/../OrbtcpConnection.h \
+  transportlayer/tcp/flavours/../../../../../orbtcp/src/transportlayer/orbtcp/flavours/../../../../../tcpPaced/src/transportlayer/tcp/TcpPacedConnection.h \
+  transportlayer/tcp/flavours/../../../../../orbtcp/src/transportlayer/orbtcp/flavours/OrbtcpFamily.h \
+  transportlayer/tcp/flavours/../../../../../orbtcp/src/transportlayer/orbtcp/flavours/../../orbtcp/flavours/OrbtcpFamilyState_m.h \
+  transportlayer/tcp/flavours/../../../../../orbtcp/src/transportlayer/orbtcp/flavours/../../orbtcp/flavours/../../../common/IntTag_m.h \
+  transportlayer/tcp/flavours/../../../../../orbtcp/src/transportlayer/orbtcp/flavours/../../../../../tcpPaced/src/transportlayer/tcp/flavours/TcpPacedFamily.h \
+  transportlayer/tcp/flavours/MpOrbPressurePolicy.h \
+  transportlayer/tcp/../../../../orbtcp/src/common/PintFlowCount.h
 transportlayer/tcp/MpOrbConnection.h:
 transportlayer/tcp/../../../../mptcp/src/transportlayer/tcp/MpTcpConnection.h:
 ../../inet4.5/src/inet/common/INETUtils.h:
@@ -237,3 +251,17 @@ transportlayer/tcp/../../../../mptcp/src/transportlayer/tcp/MpTcpPacketScheduler
 transportlayer/tcp/../../../../mptcp/src/transportlayer/tcp/SubflowConnection.h:
 transportlayer/tcp/../../../../mptcp/src/transportlayer/tcp/TcpOpenSubflowCommand_m.h:
 transportlayer/tcp/../../../../mptcp/src/transportlayer/tcp/../../common/DataSequenceNumberTag_m.h:
+transportlayer/tcp/../../../../orbtcp/src/common/IntTag_m.h:
+transportlayer/tcp/flavours/MpOrbPressure.h:
+transportlayer/tcp/flavours/MpOrbUncoupled.h:
+transportlayer/tcp/flavours/../../../../../orbtcp/src/transportlayer/orbtcp/flavours/OrbtcpPintFlavour.h:
+transportlayer/tcp/flavours/../../../../../orbtcp/src/transportlayer/orbtcp/flavours/OrbtcpFlavour.h:
+transportlayer/tcp/flavours/../../../../../orbtcp/src/transportlayer/orbtcp/flavours/../../../common/IntTag_m.h:
+transportlayer/tcp/flavours/../../../../../orbtcp/src/transportlayer/orbtcp/flavours/../OrbtcpConnection.h:
+transportlayer/tcp/flavours/../../../../../orbtcp/src/transportlayer/orbtcp/flavours/../../../../../tcpPaced/src/transportlayer/tcp/TcpPacedConnection.h:
+transportlayer/tcp/flavours/../../../../../orbtcp/src/transportlayer/orbtcp/flavours/OrbtcpFamily.h:
+transportlayer/tcp/flavours/../../../../../orbtcp/src/transportlayer/orbtcp/flavours/../../orbtcp/flavours/OrbtcpFamilyState_m.h:
+transportlayer/tcp/flavours/../../../../../orbtcp/src/transportlayer/orbtcp/flavours/../../orbtcp/flavours/../../../common/IntTag_m.h:
+transportlayer/tcp/flavours/../../../../../orbtcp/src/transportlayer/orbtcp/flavours/../../../../../tcpPaced/src/transportlayer/tcp/flavours/TcpPacedFamily.h:
+transportlayer/tcp/flavours/MpOrbPressurePolicy.h:
+transportlayer/tcp/../../../../orbtcp/src/common/PintFlowCount.h:

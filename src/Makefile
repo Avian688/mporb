@@ -31,6 +31,7 @@ OBJS = \
     $O/transportlayer/tcp/MpOrbConnection.o \
     $O/transportlayer/tcp/MpOrbSubflowConnection.o \
     $O/transportlayer/tcp/flavours/MpOrbOlia.o \
+    $O/transportlayer/tcp/flavours/MpOrbPressure.o \
     $O/transportlayer/tcp/flavours/MpOrbSemiCoupledAlpha.o \
     $O/transportlayer/tcp/flavours/MpOrbSemiCoupledBase.o \
     $O/transportlayer/tcp/flavours/MpOrbSemiCoupledBeta.o \

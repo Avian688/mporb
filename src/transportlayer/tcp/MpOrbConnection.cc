@@ -15,6 +15,10 @@
 
 #include "MpOrbConnection.h"
 
+#include "flavours/MpOrbPressure.h"
+#include "flavours/MpOrbPressurePolicy.h"
+#include "../../../../orbtcp/src/common/PintFlowCount.h"
+
 namespace inet {
 namespace tcp {
 
@@ -41,6 +45,71 @@ void MpOrbConnection::process_OPEN_PASSIVE(TcpEventCode& event, TcpCommand *tcpC
     openCmd->setTcpAlgorithmClass(MPORB_META_ALGORITHM);
 
     MpTcpConnection::process_OPEN_PASSIVE(event, tcpCommand, msg);
+}
+
+void MpOrbConnection::recordPressureFeedback(SubflowConnection *subflow,
+        const IntMetaData& feedback, int flowCountBits, int maxFlowCount)
+{
+    if (subflow == nullptr)
+        return;
+    const uint32_t flows = pint::decodeFlowCount(feedback.getPintTotalFlowCountCode(),
+            flowCountBits, maxFlowCount);
+    if (!mporbpressure::positiveFinite(mporbpressure::fairRate(feedback.getB(), flows)))
+        return;
+    pressureFeedback[subflow->getId()] = {
+        static_cast<double>(feedback.getB()), flows, feedback.getTs(), simTime()
+    };
+}
+
+MpOrbConnection::PressureAllocation MpOrbConnection::getPressureAllocation(
+        const SubflowConnection *requester) const
+{
+    PressureAllocation allocation;
+    mporbpressure::RateBudget budget;
+    for (auto *subflow : getSubflows()) {
+        if (subflow == nullptr || !subflow->isTransportActiveForScheduler() ||
+                subflow->isSchedulerStale())
+            continue;
+        const auto *algorithm = dynamic_cast<MpOrbPressure *>(subflow->getTcpAlgorithm());
+        if (algorithm == nullptr || !algorithm->isPressureCouplingReady())
+            continue;
+        const auto entry = pressureFeedback.find(subflow->getId());
+        if (entry == pressureFeedback.end())
+            continue;
+        const auto& feedback = entry->second;
+        const auto *subflowState = static_cast<const OrbtcpStateVariables *>(subflow->getState());
+        if (!mporbpressure::fresh(simTime().dbl(), feedback.sampledAt.dbl(),
+                feedback.receivedAt.dbl(), subflowState->srtt.dbl()))
+            continue;
+        const double rate = algorithm->getPressureRateEstimate();
+        const double fairRate = mporbpressure::fairRate(feedback.bandwidth, feedback.flows);
+        if (!budget.add(rate, fairRate))
+            continue;
+        if (subflow == requester) {
+            allocation.fairRate = fairRate;
+            allocation.subflowRate = rate;
+        }
+    }
+    // A missing/stale requester falls back to its uncoupled update. An idle
+    // sibling cannot indefinitely dilute the connection's rate estimate.
+    const auto share = budget.allocate(allocation.subflowRate);
+    allocation.weight = share.weight;
+    allocation.connectionRate = budget.totalRate;
+    allocation.weightedFairRate = share.weightedFairRate;
+    allocation.freshSubflows = budget.paths;
+    return allocation;
+}
+
+void MpOrbConnection::forgetPressureFeedback(const SubflowConnection *subflow)
+{
+    if (subflow != nullptr)
+        pressureFeedback.erase(subflow->getId());
+}
+
+void MpOrbConnection::removeSubflow(SubflowConnection *subflow)
+{
+    forgetPressureFeedback(subflow);
+    MpTcpConnection::removeSubflow(subflow);
 }
 
 } // namespace tcp

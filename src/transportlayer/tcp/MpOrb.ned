@@ -34,4 +34,7 @@ simple MpOrb extends MpTcp
         bool pintUseAverageRtt = default(true);
         bool pintUseInitialPhase = default(true);
         bool pintUseInitialPhaseFlowCount = default(true);
+        double mpOrbPressureDecreaseGain = default(4);
+        double mpOrbPressureMaxDecreaseFraction = default(0.25);
+        int mpOrbPressureProbeIntervalRtts = default(4);
 }

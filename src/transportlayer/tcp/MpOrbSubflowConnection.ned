@@ -59,6 +59,19 @@ simple MpOrbSubflowConnection extends SubflowConnection
         @signal[mpOrbOliaPathPrice];
         @signal[mpOrbOliaPathOpportunity];
         @signal[mpOrbOliaNormalizedWindow];
+        @signal[mpOrbPressure];
+        @signal[mpOrbPressureWeight];
+        @signal[mpOrbPressureFairRate];
+        @signal[mpOrbPressureAiScale];
+        @signal[mpOrbPressureConnectionAiRate];
+        @signal[mpOrbPressureFreshSubflows];
+        @signal[mpOrbPressureUncoupledAi];
+        @signal[mpOrbPressureWeightedAi];
+        @signal[mpOrbPressureSubflowRate];
+        @signal[mpOrbPressureConnectionRate];
+        @signal[mpOrbPressureReentryBoost];
+        @signal[mpOrbPressureWindowDelta];
+        @signal[mpOrbPressureExtraWithdrawalBytes];
 
         @statistic[txRate](record=vector; interpolationmode=sample-hold);
         @statistic[txBytes](record=vector; interpolationmode=sample-hold);
@@ -97,4 +110,17 @@ simple MpOrbSubflowConnection extends SubflowConnection
         @statistic[mpOrbOliaPathPrice](record=vector; interpolationmode=sample-hold);
         @statistic[mpOrbOliaPathOpportunity](record=vector; interpolationmode=sample-hold);
         @statistic[mpOrbOliaNormalizedWindow](record=vector; interpolationmode=sample-hold);
+        @statistic[mpOrbPressure](record=vector; interpolationmode=sample-hold);
+        @statistic[mpOrbPressureWeight](record=vector; interpolationmode=sample-hold);
+        @statistic[mpOrbPressureFairRate](record=vector; interpolationmode=sample-hold);
+        @statistic[mpOrbPressureAiScale](record=vector; interpolationmode=sample-hold);
+        @statistic[mpOrbPressureConnectionAiRate](record=vector; interpolationmode=sample-hold);
+        @statistic[mpOrbPressureFreshSubflows](record=vector; interpolationmode=sample-hold);
+        @statistic[mpOrbPressureUncoupledAi](record=vector; interpolationmode=sample-hold);
+        @statistic[mpOrbPressureWeightedAi](record=vector; interpolationmode=sample-hold);
+        @statistic[mpOrbPressureSubflowRate](record=vector; interpolationmode=sample-hold);
+        @statistic[mpOrbPressureConnectionRate](record=vector; interpolationmode=sample-hold);
+        @statistic[mpOrbPressureReentryBoost](record=vector; interpolationmode=sample-hold);
+        @statistic[mpOrbPressureWindowDelta](record=vector; interpolationmode=sample-hold);
+        @statistic[mpOrbPressureExtraWithdrawalBytes](record=vector; interpolationmode=sample-hold);
 }
