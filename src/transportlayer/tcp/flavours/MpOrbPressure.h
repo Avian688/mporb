@@ -9,7 +9,9 @@ namespace tcp {
 
 class MpOrbConnection;
 
-/** Aggregate-rate coupling with bounded withdrawal and weak-path re-entry. */
+/** OrbCC/PINT with rate-share AI, bounded withdrawal and weak-path re-entry.
+ *  Pressure's telemetry updates do not use the cwnd-limited growth gate.
+ */
 class MpOrbPressure : public MpOrbUncoupled
 {
   protected:

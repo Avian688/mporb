@@ -119,6 +119,7 @@
   transportlayer/tcp/../../../../mptcp/src/transportlayer/tcp/TcpOpenSubflowCommand_m.h \
   transportlayer/tcp/../../../../mptcp/src/transportlayer/tcp/../../common/DataSequenceNumberTag_m.h \
   transportlayer/tcp/../../../../orbtcp/src/common/IntTag_m.h \
+  transportlayer/tcp/MpOrbIntScheduler.h \
   transportlayer/tcp/flavours/MpOrbPressure.h \
   transportlayer/tcp/flavours/MpOrbUncoupled.h \
   transportlayer/tcp/flavours/../../../../../orbtcp/src/transportlayer/orbtcp/flavours/OrbtcpPintFlavour.h \
@@ -252,6 +253,7 @@ transportlayer/tcp/../../../../mptcp/src/transportlayer/tcp/SubflowConnection.h:
 transportlayer/tcp/../../../../mptcp/src/transportlayer/tcp/TcpOpenSubflowCommand_m.h:
 transportlayer/tcp/../../../../mptcp/src/transportlayer/tcp/../../common/DataSequenceNumberTag_m.h:
 transportlayer/tcp/../../../../orbtcp/src/common/IntTag_m.h:
+transportlayer/tcp/MpOrbIntScheduler.h:
 transportlayer/tcp/flavours/MpOrbPressure.h:
 transportlayer/tcp/flavours/MpOrbUncoupled.h:
 transportlayer/tcp/flavours/../../../../../orbtcp/src/transportlayer/orbtcp/flavours/OrbtcpPintFlavour.h:

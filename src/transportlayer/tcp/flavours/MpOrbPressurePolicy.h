@@ -75,35 +75,6 @@ constexpr double rateEstimate(double committedWindow, double rtt)
     return positiveFinite(rate) ? rate : 0;
 }
 
-constexpr double orbTarget(double committedWindow, double utilization, double eta, double ai)
-{
-    return utilization >= eta ? committedWindow * (eta / utilization) + ai : committedWindow + ai;
-}
-
-constexpr double withdraw(double committedWindow, double coupledTarget, double uncoupledTarget,
-        double probeFloor, double gain, double maxDecreaseFraction)
-{
-    double target = coupledTarget;
-    if (coupledTarget < committedWindow) {
-        const double accelerated = committedWindow + gain * (coupledTarget - committedWindow);
-        const double limited = committedWindow * (1 - maxDecreaseFraction);
-        const double bounded = accelerated > limited ? accelerated : limited;
-        // Do not weaken an ordinary OrbCC decrease larger than our step bound.
-        target = coupledTarget < bounded ? coupledTarget : bounded;
-    }
-    if (target < probeFloor)
-        target = probeFloor;
-    // Even the probe floor may not exceed the same-state Uncoupled target.
-    return target < uncoupledTarget ? target : uncoupledTarget;
-}
-
-constexpr bool reentryOpportunity(double share, unsigned int paths, double utilization,
-        double eta, bool fairRateImproved)
-{
-    return paths > 1 && share > 0 && share < 0.25 / paths &&
-            ((positiveFinite(utilization) && utilization < 0.9 * eta) || fairRateImproved);
-}
-
 constexpr bool fresh(double now, double sampledAt, double receivedAt, double rtt)
 {
     return positiveFinite(rtt) && sampledAt >= 0 && receivedAt >= sampledAt &&
@@ -112,7 +83,7 @@ constexpr bool fresh(double now, double sampledAt, double receivedAt, double rtt
 
 // Carry sub-byte increases without imposing a one-byte floor. The cap holds
 // on every call, including when the uncoupled budget changes between ACKs.
-constexpr uint32_t attenuate(uint32_t uncoupledAi, double fraction, double& residual)
+constexpr uint32_t scaleAdditiveIncrease(uint32_t uncoupledAi, double fraction, double& residual)
 {
     if (uncoupledAi == 0 || !(fraction >= 0 && fraction < 1)) {
         residual = 0;

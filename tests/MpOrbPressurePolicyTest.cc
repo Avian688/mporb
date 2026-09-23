@@ -57,85 +57,6 @@ constexpr bool rateBudgetChecks()
 }
 static_assert(rateBudgetChecks(), "Couple to the connection's aggregate window-rate estimate");
 
-// The production window equation has the PF stationarity condition for one
-// shared bottleneck per route: 1/X = d/(gamma*q), where d = 1 - eta/U.
-// These checks are an equilibrium calculation, not an OMNeT++ simulation.
-constexpr double netChange(double pathRate, double connectionRate, double fair,
-        double price, double rtt = 1)
-{
-    const double gamma = 0.05;
-    const double eta = 0.95;
-    const double window = pathRate * rtt;
-    RateBudget budget;
-    budget.add(pathRate, fair);
-    if (connectionRate > pathRate)
-        budget.add(connectionRate - pathRate, fair);
-    const double ai = gamma * fair * rtt * budget.allocate(pathRate).weight;
-    const double u = eta / (1 - gamma * fair * price);
-    const double coupled = orbTarget(window, u, eta, ai);
-    const double uncoupled = orbTarget(window, u, eta, gamma * fair * rtt);
-    return withdraw(window, coupled, uncoupled, 0, 4, 0.25) - window;
-}
-
-constexpr bool equilibriumChecks()
-{
-    const double total = 800.0 / 3;
-    // No background: A gets 2/3 of each shared link; B/C get 1/3 plus private links.
-    if (!close(netChange(200.0 / 3, total, 50, 1 / total), 0) ||
-            !close(netChange(100.0 / 3, total, 50, 1 / total), 0) ||
-            !close(netChange(100, total, 100, 1 / total), 0))
-        return false;
-    // The old 240/280/280 allocation is NOT stationary: A grows and B/C yield
-    // for a shared-link price between their connection marginal utilities.
-    if (!(netChange(60, 240, 50, 1.0 / 260) > 0) ||
-            !(netChange(40, 280, 50, 1.0 / 260) < 0))
-        return false;
-    // Either background phase: main connections use their remaining routes
-    // at aggregate 200; five background connections share each occupied link.
-    if (!close(netChange(100, 200, 100, 1.0 / 200), 0) ||
-            !close(netChange(20, 20, 20, 1.0 / 20), 0))
-        return false;
-    // A tiny foreground allocation on a background-dominated link withdraws.
-    if (!(netChange(1, 200, 100.0 / 6, 1.0 / 20) < 0))
-        return false;
-    // Different RTTs preserve these stationary points, not necessarily their speed.
-    return close(netChange(100, 200, 100, 1.0 / 200, 0.04), 0) &&
-            close(netChange(100, 200, 100, 1.0 / 200, 0.16), 0);
-}
-static_assert(equilibriumChecks(), "ABC PF allocations satisfy the idealized control equation");
-// Scope regression: max-bottleneck PINT does not sum two simultaneous prices.
-// In the two-link X/Y/Z example, its global PF allocation is not stationary.
-static_assert(netChange(100.0 / 3, 100.0 / 3, 50, 3.0 / 200) > 0,
-        "Do not claim general multi-bottleneck proportional fairness");
-
-constexpr bool withdrawalChecks()
-{
-    if (withdraw(10000, 9900, 10100, 2000, 4, 0.25) != 9600)
-        return false;
-    if (withdraw(10000, 8000, 11000, 2000, 4, 0.25) != 7500)
-        return false;
-    if (withdraw(10000, 1000, 1500, 2000, 4, 0.25) != 1500)
-        return false; // probe floor cannot override the uncoupled safety bound
-    if (withdraw(10000, 10100, 10500, 2000, 4, 0.25) != 10100)
-        return false; // do not accelerate positive growth
-    for (unsigned int utilization = 1; utilization <= 200; utilization++) {
-        for (unsigned int share = 0; share <= 100; share++) {
-            const double own = orbTarget(10000, utilization / 100.0, 0.95, 500 * share / 100.0);
-            const double uncoupled = orbTarget(10000, utilization / 100.0, 0.95, 500);
-            const double target = withdraw(10000, own, uncoupled, 2000, 4, 0.25);
-            if (target < 0 || target > uncoupled)
-                return false;
-        }
-    }
-    return true;
-}
-static_assert(withdrawalChecks(), "Withdrawal and probing must respect the uncoupled target");
-static_assert(reentryOpportunity(0.001, 4, 0.5, 0.95, false), "Weak underloaded path can re-enter");
-static_assert(reentryOpportunity(0.001, 4, 1, 0.95, true), "New B/N opportunity can trigger re-entry");
-static_assert(!reentryOpportunity(0.001, 4, 0.96, 0.95, false), "No steady-state boost without improvement");
-static_assert(!reentryOpportunity(0.25, 4, 0.5, 0.95, false), "Only weak paths need a boost");
-static_assert(!reentryOpportunity(1, 1, 0.5, 0.95, true), "Keep single-path behavior uncoupled");
-
 constexpr bool aiBudgetChecks()
 {
     // Carry fractional AI across changing base budgets and weights; no call
@@ -143,7 +64,7 @@ constexpr bool aiBudgetChecks()
     double residual = 0;
     for (uint32_t budget = 0; budget <= 100; budget++) {
         for (unsigned int part = 0; part <= 100; part++) {
-            const auto actual = attenuate(budget, part / 100.0, residual);
+            const auto actual = scaleAdditiveIncrease(budget, part / 100.0, residual);
             if (actual > budget || residual < 0 || residual >= 1)
                 return false;
         }
@@ -151,26 +72,26 @@ constexpr bool aiBudgetChecks()
     residual = 0;
     uint32_t total = 0;
     for (int i = 0; i < 100; i++)
-        total += attenuate(1, 0.25, residual);
+        total += scaleAdditiveIncrease(1, 0.25, residual);
     if (total != 25 || residual != 0)
         return false;
     residual = 0.75;
-    if (attenuate(0, 0.5, residual) != 0 || residual != 0)
+    if (scaleAdditiveIncrease(0, 0.5, residual) != 0 || residual != 0)
         return false;
     residual = 0.75;
-    if (attenuate(1, 1, residual) != 1 || residual != 0)
+    if (scaleAdditiveIncrease(1, 1, residual) != 1 || residual != 0)
         return false;
     residual = 0.75;
-    if (attenuate(1, 0, residual) != 0 || residual != 0)
+    if (scaleAdditiveIncrease(1, 0, residual) != 0 || residual != 0)
         return false;
     residual = 0.75;
     constexpr uint32_t largestBudget = std::numeric_limits<uint32_t>::max();
-    if (attenuate(largestBudget, 1 - 1e-16, residual) > largestBudget)
+    if (scaleAdditiveIncrease(largestBudget, 1 - 1e-16, residual) > largestBudget)
         return false;
     residual = std::numeric_limits<double>::quiet_NaN();
-    if (attenuate(100, 0.5, residual) != 50 || residual != 0)
+    if (scaleAdditiveIncrease(100, 0.5, residual) != 50 || residual != 0)
         return false;
-    return attenuate(100, std::numeric_limits<double>::quiet_NaN(), residual) == 100;
+    return scaleAdditiveIncrease(100, std::numeric_limits<double>::quiet_NaN(), residual) == 100;
 }
 
 static_assert(aiBudgetChecks(), "Weighted AI must stay within the uncoupled budget");

@@ -28,8 +28,16 @@ windows. RTT is the current RTT used by OrbCC, with smoothed RTT as a fallback.
 This is a window-based rate estimate, not measured application goodput or a
 reservation. Using application goodput directly would make a DSN stall appear
 to remove the connection's network load. Scheduler/application-limited windows
-can still make the estimate inaccurate; the existing cwnd-limited growth gate
-is retained.
+can still make the estimate inaccurate.
+
+Pressure no longer requires a subflow to be cwnd-limited before increasing its
+window or starting a re-entry boost. The removed check asked whether queued
+demand was filling the current congestion window; when it was not, it capped
+the new window at the current cwnd. This removal applies during startup,
+single-path operation and coupled operation. Updates still require valid PINT
+feedback on ACKs; an idle path does not grow from a timer alone. TCP still
+enforces cwnd when sending, and the scheduler's separate admission policy is
+unchanged. Plain OrbCC and MpOrbUncoupled retain their existing growth checks.
 
 The normalized shares sum to one for the same eligible meta snapshot. Unlike
 the previous B/N-budget rule, the actual AI multiplier now differs by subflow
@@ -43,15 +51,20 @@ floor. This is not a claim that the underlying rate-share idea is new.
 
 ## Withdrawal and re-entry
 
-Let W be the last committed window. OrbCC's ordinary coupled candidate is:
+Let W be the last committed window. `MpOrbPressure::computeWnd()` now writes
+the OrbCC equation directly, without the `orbTarget` or `withdraw` helpers:
 
 ```text
-d = max(0, 1 - eta/U)
-W_candidate = W * (1-d) + AI_i
+if U >= eta: W_candidate = W * eta/U + AI_i
+otherwise:  W_candidate = W + AI_i
 ```
 
+The old `orbTarget` name meant this candidate window in bytes; it was not a
+second controller. Startup retains PINT's rule
+`min(W + AI_startup, ssthresh)` until the fair-window threshold is reached.
+
 When that candidate is below W, the controller multiplies the negative change
-by `mpOrbPressureDecreaseGain` (default 4). The additional acceleration is
+by `mpOrbPressureDecreaseGain` (current default 1, so no acceleration). The additional acceleration is
 bounded so it does not take the window below 75% of W in one committed update
 with the default `mpOrbPressureMaxDecreaseFraction = 0.25`. An ordinary OrbCC
 reduction already larger than that remains allowed.
@@ -63,13 +76,15 @@ inherited ACK handler updates pacing. Existing in-flight packets still need
 to drain; pacing retains OrbCC's in-flight-aware calculation.
 
 A two-MSS window floor leaves room for transport probes. Both that floor and
-the final target are capped by the same-state uncoupled OrbCC target. The floor
+the final target are capped by the same-state OrbCC equation with uncoupled AI. The floor
 therefore cannot override a more severe uncoupled congestion response. It is
 not a separate packet-generation or reinjection mechanism and cannot force the
-Linux-style scheduler to select an idle subflow.
+Linux-style scheduler to select an idle subflow. This compares the window
+equations before any cwnd-limited gate; it does not guarantee a window below a
+separate, gated MpOrbUncoupled run after the two runs diverge.
 
 A weak subflow (rate share below one quarter of the equal-path share) can get
-up to one current RTT of uncoupled AI when it is cwnd-limited and fresh feedback
+up to one current RTT of uncoupled AI when fresh feedback
 shows either U below 0.9*eta or a greater-than-25% increase in B/N. Boosts start
 at most once per `mpOrbPressureProbeIntervalRtts` RTTs (default 4). A B/N
 improvement is remembered for one such interval. This avoids multiplying an
@@ -80,7 +95,7 @@ congested bottleneck without a new improvement.
 Optional parameters:
 
 ```ini
-**.tcp.mpOrbPressureDecreaseGain = 4
+**.tcp.mpOrbPressureDecreaseGain = 1
 **.tcp.mpOrbPressureMaxDecreaseFraction = 0.25
 **.tcp.mpOrbPressureProbeIntervalRtts = 4
 ```
@@ -112,8 +127,8 @@ formulation in [Kelly, Charging and rate control for elastic traffic](https://ww
 The mapping to OrbCC's effective bottleneck cost above is an analytical model
 of this implementation, not a general convergence theorem.
 
-For the supplied eight-path ABC topology, the ideal capacity-level stationary
-targets are:
+For the supplied eight-path ABC topology, the capacity-level proportional-fair
+benchmarks are:
 
 | Phase | A | B | C | Each background connection |
 |---|---:|---:|---:|---:|
@@ -122,9 +137,12 @@ targets are:
 | Background on 1-2 | 200 | 200 | 200 | 20 |
 
 Values are Mbps before utilization targets, overhead and the finite probing
-floor. They are fixed-point checks, not predicted exact application goodput.
-Unlike the earlier rule, 240/280/280 is not stationary in the idealized shared
-link model: A has greater marginal utility and B/C can yield shared capacity.
+floor. They are benchmarks, not predictions of this controller's equilibrium.
+The effective price must also agree with the U actually produced by the
+queues. Supplying a price that makes these rates stationary does not establish
+that agreement or prove proportional fairness. See
+[the equilibrium analysis](mporb-pressure-equilibrium-analysis.md) for the
+closed-loop model and its assumptions.
 
 ## Scope and limits
 
@@ -179,10 +197,14 @@ Fallback subflows emit weight/scale 1 and are outside the eligible sum.
 
 ```sh
 clang++ -std=c++17 -fsyntax-only samples/mporb/tests/MpOrbPressurePolicyTest.cc
+python3 samples/mporb/tests/check_pressure_window.py
 ```
 
-Compile-time checks cover normalized aggregate-rate coupling, the ABC interior
-stationarity/directional conditions, the multi-bottleneck limitation, weak-path
-re-entry conditions, freshness, withdrawal bounds and the uncoupled AI/target
-caps. They do not exercise the OMNeT++ event loop, scheduler or ACK timing.
+Compile-time policy checks cover normalized aggregate-rate coupling, valid
+rate estimates, freshness and the uncoupled AI cap with fractional-byte carry.
+The window check extracts the actual `computeWnd()` method into a minimal
+state/signal harness and constant-evaluates startup, fallback, commit, withdrawal
+and floor/cap cases. This check uses C++23 for constexpr `std::isfinite`; the
+production source remains C++17. The old helper-only window checks were removed.
+Neither check exercises the OMNeT++ event loop, scheduler or ACK timing.
 Build and simulation validation remain necessary before runtime claims.

@@ -28,6 +28,13 @@ class MpOrbSubflowConnection : public SubflowConnection
 {
   protected:
     std::vector<IntDataVec> intDataContextStack;
+    bool hasDelayPath = false;
+    bool hasDelayFeedback = false;
+    uint32_t delayPathDigest = 0;
+    simtime_t delaySampleTime = SIMTIME_ZERO;
+    simtime_t delayReceivedTime = SIMTIME_ZERO;
+    double forwardQueueingDelay = 0;
+    double reverseQueueingDelay = 0;
 
     virtual void pushIntContext(const Ptr<const TcpHeader>& tcpHeader);
     virtual void popIntContext();
@@ -45,6 +52,7 @@ class MpOrbSubflowConnection : public SubflowConnection
 
     virtual void sendIntAck(const IntDataVec& intData);
     virtual IntDataVec getCurrentIntData() const;
+    virtual bool getSchedulerForwardDelay(simtime_t& delay) const;
 };
 
 } // namespace tcp

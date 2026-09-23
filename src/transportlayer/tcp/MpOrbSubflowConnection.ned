@@ -20,6 +20,14 @@ import mptcp.transportlayer.tcp.SubflowConnection;
 simple MpOrbSubflowConnection extends SubflowConnection
 {
     parameters:
+        @signal[intSchedulerScore](type=double; unit=s);
+        @signal[intSchedulerBurstBytes](type=long);
+        @signal[intSchedulerFreshFeedback](type=bool);
+        @signal[intSchedulerProbe](type=bool);
+        @statistic[intSchedulerScore](record=vector; unit=s; interpolationmode=sample-hold);
+        @statistic[intSchedulerBurstBytes](record=vector; interpolationmode=sample-hold);
+        @statistic[intSchedulerFreshFeedback](record=vector; interpolationmode=sample-hold);
+        @statistic[intSchedulerProbe](record=vector; interpolationmode=sample-hold);
         @class("inet::tcp::MpOrbSubflowConnection");
 
         @signal[txRate];
@@ -31,6 +39,8 @@ simple MpOrbSubflowConnection extends SubflowConnection
         @signal[bottleneckBandwidth];
         @signal[avgRtt];
         @signal[queueingDelay];
+        @signal[mpOrbForwardQueueingDelay](type=double; unit=s);
+        @signal[mpOrbReverseQueueingDelay](type=double; unit=s);
         @signal[estimatedRtt];
         @signal[smoothedEstimatedRtt];
         @signal[avgEstimatedRtt];
@@ -83,6 +93,8 @@ simple MpOrbSubflowConnection extends SubflowConnection
         @statistic[bottleneckBandwidth](record=vector; interpolationmode=sample-hold);
         @statistic[avgRtt](record=vector; interpolationmode=sample-hold);
         @statistic[queueingDelay](record=vector; interpolationmode=sample-hold);
+        @statistic[mpOrbForwardQueueingDelay](record=vector; unit=s; interpolationmode=sample-hold);
+        @statistic[mpOrbReverseQueueingDelay](record=vector; unit=s; interpolationmode=sample-hold);
         @statistic[estimatedRtt](record=vector; interpolationmode=sample-hold);
         @statistic[smoothedEstimatedRtt](record=vector; interpolationmode=sample-hold);
         @statistic[avgEstimatedRtt](record=vector; interpolationmode=sample-hold);

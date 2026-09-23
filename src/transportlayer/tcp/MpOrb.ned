@@ -34,7 +34,8 @@ simple MpOrb extends MpTcp
         bool pintUseAverageRtt = default(true);
         bool pintUseInitialPhase = default(true);
         bool pintUseInitialPhaseFlowCount = default(true);
-        double mpOrbPressureDecreaseGain = default(4);
+        bool pintSeparateQueueingDelay = default(true); // MpORB ACKs echo forward delay and accumulate reverse delay separately
+        double mpOrbPressureDecreaseGain = default(1);
         double mpOrbPressureMaxDecreaseFraction = default(0.25);
         int mpOrbPressureProbeIntervalRtts = default(4);
 }

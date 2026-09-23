@@ -16,9 +16,11 @@
 #include "MpOrbSubflowConnection.h"
 
 #include <cstring>
+#include <cmath>
 
 #include "../../../../mptcp/src/transportlayer/tcp/MpTcpConnection.h"
 #include "../../../../orbtcp/src/common/PintSenderTelemetry.h"
+#include "../../../../orbtcp/src/common/PintQueueingDelay.h"
 #include "flavours/MpOrbUncoupled.h"
 
 namespace inet {
@@ -130,10 +132,56 @@ void MpOrbSubflowConnection::updateAckTelemetry(const Ptr<const TcpHeader>& tcpH
     if (orbAlgorithm == nullptr)
         return;
 
-    if (tcpHeader != nullptr && tcpHeader->findTag<IntTag>())
-        orbAlgorithm->updateRttTelemetry(tcpHeader->getTag<IntTag>()->getIntData());
-    else
-        orbAlgorithm->updateRttTelemetry({});
+    const auto tag = tcpHeader != nullptr ? tcpHeader->findTag<IntTag>() : nullptr;
+    const IntDataVec feedback = tag != nullptr ? tag->getIntData() : IntDataVec{};
+    orbAlgorithm->updateRttTelemetry(feedback);
+    if (feedback.empty())
+        return;
+
+    const auto& sample = feedback.front();
+    if (!sample.getSeparateQueueingDelay()) {
+        hasDelayFeedback = false;
+        return;
+    }
+    const simtime_t sampleTime = sample.getTs();
+    if (sample.getB() <= 0 || !std::isfinite(sample.getPintUtilization()) ||
+            sample.getPintUtilization() <= 0 || sampleTime < SIMTIME_ZERO || sampleTime > simTime() ||
+            (hasDelayPath && sampleTime < delaySampleTime))
+        return;
+
+    const bool pathChanged = hasDelayPath && delayPathDigest != sample.getPathDigest();
+    hasDelayPath = true;
+    delayPathDigest = sample.getPathDigest();
+    delaySampleTime = sampleTime;
+    delayReceivedTime = simTime();
+    // Do not combine the first ACK from a changed route with the old RTT
+    // baseline. A subsequent fresh ACK can qualify the new route again.
+    hasDelayFeedback = !pathChanged &&
+            sample.getQueueingDelayCode() < pint::QUEUEING_DELAY_MAX_CODE &&
+            sample.getReverseQueueingDelayCode() < pint::QUEUEING_DELAY_MAX_CODE;
+    forwardQueueingDelay = pint::decodeQueueingDelay(sample.getQueueingDelayCode());
+    reverseQueueingDelay = pint::decodeQueueingDelay(sample.getReverseQueueingDelayCode());
+    static const simsignal_t forwardSignal = registerSignal("mpOrbForwardQueueingDelay");
+    static const simsignal_t reverseSignal = registerSignal("mpOrbReverseQueueingDelay");
+    emit(forwardSignal, forwardQueueingDelay);
+    emit(reverseSignal, reverseQueueingDelay);
+}
+
+bool MpOrbSubflowConnection::getSchedulerForwardDelay(simtime_t& delay) const
+{
+    const simtime_t rtt = getSchedulingRtt();
+    if (!hasDelayFeedback || state == nullptr || state->lossRecovery || state->afterRto ||
+            rtt <= SIMTIME_ZERO || rtt == SIMTIME_MAX ||
+            simTime() - delayReceivedTime > 2 * rtt || simTime() - delaySampleTime > 2 * rtt)
+        return false;
+    auto *orbAlgorithm = dynamic_cast<OrbtcpFamily *>(tcpAlgorithm);
+    const simtime_t baseRtt = orbAlgorithm != nullptr ? orbAlgorithm->getEstimatedRtt() : SIMTIME_ZERO;
+    if (baseRtt <= SIMTIME_ZERO)
+        return false;
+    // Only queueing is measured directionally. Half of the queue-corrected
+    // RTT is an explicit symmetric-propagation approximation, not an oracle.
+    delay = baseRtt / 2 + SimTime(forwardQueueingDelay);
+    return true;
 }
 
 void MpOrbSubflowConnection::sendToIP(Packet *tcpSegment, const Ptr<TcpHeader>& tcpHeader)
@@ -188,6 +236,14 @@ void MpOrbSubflowConnection::sendIntAck(const IntDataVec& intData)
     auto intTag = tcpHeader->addTagIfAbsent<IntTag>();
     for (const auto& item : intData)
         intTag->getIntDataForUpdate().push_back(item);
+    if (auto *orbAlgorithm = dynamic_cast<OrbtcpFamily *>(tcpAlgorithm)) {
+        if (orbAlgorithm->usesPintTelemetry() && tcpMain->par("pintSeparateQueueingDelay").boolValue()) {
+            for (auto& sample : intTag->getIntDataForUpdate()) {
+                sample.setSeparateQueueingDelay(true);
+                sample.setReverseQueueingDelayCode(0);
+            }
+        }
+    }
 
     Packet *packet = new Packet("TcpAck");
     state->sndAck = true;

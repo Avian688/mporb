@@ -29,6 +29,7 @@ O = $(PROJECT_OUTPUT_DIR)/$(CONFIGNAME)/$(PROJECTRELATIVE_PATH)
 OBJS = \
     $O/transportlayer/tcp/MpOrb.o \
     $O/transportlayer/tcp/MpOrbConnection.o \
+    $O/transportlayer/tcp/MpOrbIntScheduler.o \
     $O/transportlayer/tcp/MpOrbSubflowConnection.o \
     $O/transportlayer/tcp/flavours/MpOrbOlia.o \
     $O/transportlayer/tcp/flavours/MpOrbPressure.o \

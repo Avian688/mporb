@@ -14,6 +14,7 @@
 //
 
 #include "MpOrbConnection.h"
+#include "MpOrbIntScheduler.h"
 
 #include "flavours/MpOrbPressure.h"
 #include "flavours/MpOrbPressurePolicy.h"
@@ -26,6 +27,13 @@ Define_Module(MpOrbConnection);
 
 namespace {
 constexpr const char *MPORB_META_ALGORITHM = "MpTcpMetaCubic";
+}
+
+std::unique_ptr<MpTcpPacketScheduler> MpOrbConnection::createPacketScheduler(const char *mode)
+{
+    if (mode != nullptr && std::string(mode) == "intBurst")
+        return std::make_unique<MpOrbIntScheduler>(this);
+    return MpTcpConnection::createPacketScheduler(mode);
 }
 
 void MpOrbConnection::process_OPEN_ACTIVE(TcpEventCode& event, TcpCommand *tcpCommand, cMessage *msg)

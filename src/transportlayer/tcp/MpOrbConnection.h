@@ -43,6 +43,8 @@ class MpOrbConnection : public MpTcpConnection
     virtual void removeSubflow(SubflowConnection *subflow) override;
 
   protected:
+    virtual std::unique_ptr<MpTcpPacketScheduler> createPacketScheduler(const char *mode) override;
+
     struct PressureFeedback {
         double bandwidth = 0;
         uint32_t flows = 0;

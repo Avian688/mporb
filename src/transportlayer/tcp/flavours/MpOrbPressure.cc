@@ -137,9 +137,11 @@ void MpOrbPressure::adjustAdditiveIncrease()
         fairRateImprovedUntil = simTime() + controllerRtt * probeIntervalRtts;
     previousFairRate = nominalFairRate;
 
-    if (couplingActive && isCwndLimited() && simTime() >= nextReentryAllowed &&
-            mporbpressure::reentryOpportunity(allocation.weight, allocation.freshSubflows,
-                    state->u, state->eta, simTime() < fairRateImprovedUntil)) {
+    const bool weakPath = couplingActive && allocation.weight > 0 &&
+            allocation.weight < 0.25 / allocation.freshSubflows;
+    const bool pathImproved = (state->u > 0 && state->u < 0.9 * state->eta) ||
+            simTime() < fairRateImprovedUntil;
+    if (weakPath && pathImproved && simTime() >= nextReentryAllowed) {
         // A weak path with new opportunity gets one RTT of uncoupled AI, at
         // most once per configured interval. This never exceeds its base AI.
         reentryUntil = simTime() + controllerRtt;
@@ -148,7 +150,7 @@ void MpOrbPressure::adjustAdditiveIncrease()
     }
     const bool boost = couplingActive && simTime() < reentryUntil;
     const double scale = couplingActive && !boost ? allocation.weight : 1;
-    state->additiveIncrease = mporbpressure::attenuate(uncoupledAi, scale,
+    state->additiveIncrease = mporbpressure::scaleAdditiveIncrease(uncoupledAi, scale,
             additiveIncreaseResidual);
 
     conn->emit(pressureSignal, mporbpressure::pressure(bandwidth, state->sharingFlows));
@@ -167,31 +169,60 @@ void MpOrbPressure::adjustAdditiveIncrease()
 
 uint32_t MpOrbPressure::computeWnd(double u, bool updateWc)
 {
-    const double committed = state->prevWnd > 0 ? state->prevWnd : state->snd_cwnd;
-    if (!couplingActive || !isPressureCouplingReady()) {
-        const uint32_t target = OrbtcpPintFlavour::computeWnd(u, updateWc);
-        conn->emit(windowDeltaSignal, static_cast<double>(target) - committed);
-        conn->emit(extraWithdrawalSignal, 0.0);
-        return target;
+    // Like OrbCC, every fast ACK starts from the last committed window.
+    const double committedWindow = state->prevWnd > 0 ? state->prevWnd : state->snd_cwnd;
+    const bool inInitialPhase = state->initialPhase && state->ssthresh > 0;
+    const bool coupled = couplingActive && isPressureCouplingReady();
+    double targetWindow;
+    double extraWithdrawal = 0;
+
+    if (inInitialPhase) {
+        // Keep PINT's bounded startup rule, without a cwnd-limited growth gate.
+        targetWindow = std::min(committedWindow + state->additiveIncrease,
+                static_cast<double>(state->ssthresh));
+    }
+    else {
+        // OrbCC: W_next = W * eta/U + AI when U >= eta, otherwise W + AI.
+        // adjustAdditiveIncrease() has already applied Pressure's rate share.
+        const double reducedWindow = u >= state->eta ?
+                committedWindow * (state->eta / u) : committedWindow;
+        targetWindow = reducedWindow + state->additiveIncrease;
+
+        if (coupled) {
+            const double coupledWindow = targetWindow;
+            if (targetWindow < committedWindow) {
+                // Gain 1 leaves the ordinary OrbCC decrease unchanged. A larger
+                // gain accelerates withdrawal, subject to the extra-step bound.
+                const double decrease = committedWindow - targetWindow;
+                const double acceleratedWindow = committedWindow - decreaseGain * decrease;
+                const double stepFloor = committedWindow * (1 - maxDecreaseFraction);
+                targetWindow = std::min(targetWindow, std::max(acceleratedWindow, stepFloor));
+            }
+
+            // Leave two MSS for probing, but never exceed the window produced
+            // by the same OrbCC equation with the full, uncoupled AI.
+            const double uncoupledWindow = reducedWindow + uncoupledAdditiveIncrease;
+            targetWindow = std::min(std::max(targetWindow, 2.0 * state->snd_mss), uncoupledWindow);
+            extraWithdrawal = std::max(0.0, coupledWindow - targetWindow);
+        }
     }
 
-    const double baseTarget = mporbpressure::orbTarget(committed, u, state->eta, uncoupledAdditiveIncrease);
-    const double coupledTarget = mporbpressure::orbTarget(committed, u, state->eta, state->additiveIncrease);
-    const double target = mporbpressure::withdraw(committed, coupledTarget, baseTarget,
-            2.0 * state->snd_mss, decreaseGain, maxDecreaseFraction);
-    const uint32_t bounded = !std::isfinite(target) || target <= 0 ? 0 :
-            static_cast<uint32_t>(std::min(target, static_cast<double>(std::numeric_limits<uint32_t>::max())));
-    const bool limited = isCwndLimited();
-    const uint32_t targetWnd = limitCwndGrowth(bounded, limited);
-    conn->emit(cwndLimitedSignal, limited);
-    conn->emit(windowDeltaSignal, static_cast<double>(targetWnd) - committed);
-    conn->emit(extraWithdrawalSignal, std::max(0.0, coupledTarget - target));
+    const uint32_t targetWnd = !std::isfinite(targetWindow) || targetWindow <= 0 ? 0 :
+            static_cast<uint32_t>(std::min(targetWindow, static_cast<double>(std::numeric_limits<uint32_t>::max())));
+    conn->emit(windowDeltaSignal, static_cast<double>(targetWnd) - committedWindow);
+    conn->emit(extraWithdrawalSignal, extraWithdrawal);
 
-    // Every fast ACK uses the same committed anchor. Commit once per react
-    // interval so withdrawal cannot compound on every ACK or be undone later.
+    // Pressure uses telemetry on each ACK without testing whether queued demand
+    // fills cwnd. Commit once per react interval, as in OrbCC/PINT.
     if (updateWc) {
         updateWindow = false;
         state->prevWnd = targetWnd;
+        if (state->initialPhase && state->ssthresh > 0 && targetWnd >= state->ssthresh)
+            state->endInitialPhase = true;
+        if (state->endInitialPhase) {
+            state->initialPhase = false;
+            state->endInitialPhase = false;
+        }
         conn->emit(txRateSignal, state->txRate);
     }
     // The inherited ACK handler assigns snd_cwnd and then updates pacing.
