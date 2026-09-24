@@ -9,13 +9,12 @@ namespace inet {
 namespace tcp {
 
 // Reuses default burst dispatch and pacing bookkeeping, with INT ranking and
-// at most one cwnd of unsent assignments per subflow.
+// the same cwnd burst cap and write-memory admission as defaultCwnd.
 class MpOrbIntScheduler : public MpTcpPacketScheduler
 {
   public:
     explicit MpOrbIntScheduler(MpTcpConnection *connection);
     bool usesCwndBoundedScheduling() const override { return true; }
-    uint32_t getBoundedAssignmentSpace(SubflowConnection *subflow, uint32_t segmentBytes) const override;
     SubflowConnection *selectRetransmissionSubflow(SubflowConnection *source, uint32_t bytes,
             bool requireIdle = true) const override;
 

@@ -10,14 +10,22 @@ import tempfile
 
 base = Path(__file__).resolve().parents[1] / "src/transportlayer/tcp"
 source = (base / "MpOrbIntScheduler.cc").read_text()
-bound_start = source.index("uint32_t MpOrbIntScheduler::getBoundedAssignmentSpace(")
+shared = base.parents[3] / "mptcp/src/transportlayer/tcp"
+shared_source = (shared / "MpTcpPacketScheduler.cc").read_text()
+bound_start = shared_source.index("uint32_t MpTcpPacketScheduler::getBoundedAssignmentSpace(")
+bound_end = shared_source.index("\nSubflowConnection *MpTcpPacketScheduler::schedulePacket", bound_start)
 start = source.index("MpOrbIntScheduler::PathEstimate MpOrbIntScheduler::evaluatePath(")
 end = source.index("\nSubflowConnection *MpOrbIntScheduler::selectRetransmissionSubflow", start)
 method = source[start:end].replace(
     "MpOrbIntScheduler::PathEstimate MpOrbIntScheduler::evaluatePath(",
     "constexpr PathEstimate evaluatePath(", 1)
-bound_method = source[bound_start:start].replace("uint32_t MpOrbIntScheduler::getBoundedAssignmentSpace(", "constexpr uint32_t getBoundedAssignmentSpace(", 1)
+bound_method = shared_source[bound_start:bound_end].replace("uint32_t MpTcpPacketScheduler::getBoundedAssignmentSpace(", "constexpr uint32_t getBoundedAssignmentSpace(", 1)
+subflow_source = (shared / "SubflowConnection.cc").read_text()
+a = subflow_source.index("uint32_t SubflowConnection::getSchedulerAvailableBytes() const")
+b = subflow_source.index("\ndouble SubflowConnection::getSchedulerPacingRate", a)
+available_method = subflow_source[a:b].replace("state == nullptr", "false").replace("uint32_t SubflowConnection::getSchedulerAvailableBytes() const", "constexpr uint32_t getSchedulerAvailableBytes() const", 1)
 header = (base / "MpOrbIntScheduler.h").read_text()
+assert "getBoundedAssignmentSpace" not in header, "INT must inherit the shared admission method"
 start = header.index("    struct PathEstimate {")
 end = header.index("    };", start) + len("    };")
 estimate = header[start:end]
@@ -44,14 +52,16 @@ struct SubflowConnection {
     constexpr TcpPacedFamily *getTcpAlgorithm() { return &algorithm; }
     constexpr const State *getState() const { return &state; }
     double pacing=12500000, windowRate=12500000, rtt=0.04, forwardDelay=0.01;
-    uint32_t unsent=0, space=1000000, queued=0;
+    uint32_t unsent=0, space=1000000, queued=0, rwnd=0xffffffff;
+    const void *sendQueue=this;
     bool fresh=true;
     constexpr double getSchedulerPacingRateBytesPerSecond() const { return pacing; }
     constexpr double getSchedulerWindowRateBytesPerSecond() const { return windowRate; }
     constexpr uint32_t getSchedulerUnsentBytes() const { return unsent; }
     constexpr uint32_t getDefaultSchedulerWriteLimit() const { return space; }
     constexpr uint32_t getSchedulerQueuedBytes() const { return queued; }
-    // No getSchedulerAvailableBytes: accidentally restoring cwnd admission fails compilation.
+    constexpr uint32_t getSchedulerQueueLimit() const { return std::min(algorithm.cwnd, rwnd); }
+__AVAILABLE_METHOD__
     constexpr simtime_t getSchedulingRtt() const { return rtt; }
     constexpr bool getSchedulerForwardDelay(simtime_t& delay) const {
         delay=forwardDelay; return fresh;
@@ -83,10 +93,10 @@ constexpr bool checkPaths() {
     if (!(fast.score < s.evaluatePath(&p,65428).score)) return false;
     // Backlogs beyond the former 10 ms limit must not impose a second cap.
     for (uint32_t backlog : {120000U,125000U,200000U}) {
-        p.unsent=backlog;
+        p.unsent=backlog; p.queued=backlog;
         if (s.evaluatePath(&p,65428).space != p.algorithm.cwnd - backlog) return false;
     }
-    p.unsent=0; p.pacing=1000;
+    p.unsent=0; p.queued=0; p.pacing=1000;
     if (s.evaluatePath(&p,65428).space != p.space) return false;
     p.pacing=12500000; p.space=500;
     if (s.evaluatePath(&p,65428).space != 500) return false;
@@ -106,7 +116,7 @@ constexpr bool checkPaths() {
     if (s.evaluatePath(&p,65428).score != std::numeric_limits<double>::infinity()) return false;
     return true;
 }
-static_assert(checkPaths(), "INT ranking, unsent allowance and write-memory admission; fallback rules");
+static_assert(checkPaths(), "INT ranking, shared cwnd burst cap and write memory; fallback rules");
 
 constexpr bool checkRateBounds() {
     Scheduler s;
@@ -129,37 +139,37 @@ constexpr bool checkRateBounds() {
     if (s.evaluatePath(&p,65428).space != p.space) return false;
     return true;
 }
-constexpr bool checkUnsentAllowance() {
+constexpr bool checkSharedAllowance() {
     Scheduler s;
     SubflowConnection p;
     p.algorithm.cwnd=1448;
-    // Repeated scheduler calls cannot commit more than one MSS at minimum cwnd.
+    // Each selection is capped, but repeated selections may queue > cwnd.
     for (int i=0; i<100; ++i) {
         if (s.getBoundedAssignmentSpace(&p,1448) >= 1448) {
             p.unsent += 1448;
             p.queued += 1448;
         }
     }
-    if (p.unsent != 1448) return false;
-    // Transmission frees unsent allowance even while its bytes remain unacked.
+    if (p.unsent != 144800) return false;
     p.unsent=0;
     if (s.getBoundedAssignmentSpace(&p,1448) != 1448) return false;
-    p.algorithm.cwnd=250000; p.unsent=200000; p.queued=450000;
-    if (s.getBoundedAssignmentSpace(&p,1448) != 50000) return false;
-    // A cwnd reduction does not underflow the allowance or erase queued data.
-    p.algorithm.cwnd=1448;
-    if (s.getBoundedAssignmentSpace(&p,1448) != 0 || p.unsent != 200000) return false;
-    p.algorithm.cwnd=400; p.unsent=0;
+    p.algorithm.cwnd=250000; p.queued=200000; p.unsent=100000;
+    if (s.getBoundedAssignmentSpace(&p,1448) != 250000) return false;
+    p.rwnd=0; // TCP, not this scheduler cap, enforces the receive window.
+    if (s.getBoundedAssignmentSpace(&p,1448) != 250000) return false;
+    p.algorithm.cwnd=400;
     if (s.getBoundedAssignmentSpace(&p,65428) != 1448) return false;
-    p.unsent=1448;
-    if (s.getBoundedAssignmentSpace(&p,65428) != 0) return false;
+    p.queued=p.space-500;
+    if (s.getBoundedAssignmentSpace(&p,1448) != 500) return false;
+    p.queued=p.space;
+    if (s.getBoundedAssignmentSpace(&p,1448) != 0) return false;
     return true;
 }
-static_assert(checkUnsentAllowance(), "Repeated assignments, transmission refill, cwnd decrease and MSS floor");
+static_assert(checkSharedAllowance(), "Shared burst-only cap: reselection, rwnd independence, MSS floor and write memory");
 static_assert(checkRateBounds(), "Current, average and cwnd rate bounds; invalid rates; overflow");
 """
 with tempfile.TemporaryDirectory(prefix="int-scheduler-check-") as temp:
     path = Path(temp) / "scheduler.cc"
-    path.write_text(stubs + estimate + bound_method + method + checks)
+    path.write_text(stubs.replace("__AVAILABLE_METHOD__", available_method) + estimate + bound_method + method + checks)
     subprocess.run(["clang++", "-std=c++23", "-fsyntax-only", str(path)], check=True)
 print("INT scheduler compile-time checks passed (no simulator build or run).")

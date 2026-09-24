@@ -19,13 +19,13 @@ MpOrbIntScheduler::MpOrbIntScheduler(MpTcpConnection *connection) :
 
 SubflowConnection *MpOrbIntScheduler::selectDefaultSubflow(uint32_t bytes)
 {
-    // Recheck unsent allowance on every assignment, including cached bursts.
+    // Recheck shared cwnd burst cap and write memory on every assignment, including cached bursts.
     if (lastSubflow != nullptr && remainingBurstBytes >= bytes &&
-            lastSubflow->canUseDefaultScheduler(bytes) &&
+            lastSubflow->isActiveForDefaultScheduler() &&
             getBoundedAssignmentSpace(lastSubflow, bytes) >= bytes)
         return lastSubflow;
 
-    // 1. Rank active paths with write-memory space and unsent allowance.
+    // 1. Rank active paths with available write space and a cwnd burst cap.
     SubflowConnection *bestSubflow = nullptr;
     SubflowConnection *overdueSubflow = nullptr;
     PathEstimate bestPath, overduePath;
@@ -69,7 +69,7 @@ SubflowConnection *MpOrbIntScheduler::selectDefaultSubflow(uint32_t bytes)
         bestPath = overduePath;
     }
 
-    // 3. Bound the burst by remaining unsent allowance, then round to segments.
+    // 3. Bound the burst by the shared assignment allowance, then round to segments.
     // An overdue path receives only one segment.
     uint32_t burstLimit = std::min(std::max(DEFAULT_SEND_BURST_SIZE, bytes), bestPath.space);
     burstLimit -= burstLimit % bytes;
@@ -99,20 +99,6 @@ SubflowConnection *MpOrbIntScheduler::selectDefaultSubflow(uint32_t bytes)
             << " with burst=" << remainingBurstBytes
             << " bytes, fairness turn=" << (overdueSubflow != nullptr) << "\n";
     return bestSubflow;
-}
-
-uint32_t MpOrbIntScheduler::getBoundedAssignmentSpace(SubflowConnection *subflow,
-        uint32_t /*segmentBytes*/) const
-{
-    const uint32_t cwnd = check_and_cast<TcpPacedFamily *>(subflow->getTcpAlgorithm())->getCwnd();
-    const uint32_t limit = std::max(cwnd, subflow->getState()->snd_mss);
-    const uint32_t unsent = subflow->getSchedulerUnsentBytes();
-    const uint32_t allowance = unsent < limit ? limit - unsent : 0;
-    const uint32_t queued = subflow->getSchedulerQueuedBytes();
-    const uint32_t writeLimit = subflow->getDefaultSchedulerWriteLimit();
-    // Bytes in flight do not consume this unsent allowance. TCP enforces its
-    // flight window separately; a reduced cwnd simply stops further assignment.
-    return std::min(allowance, queued < writeLimit ? writeLimit - queued : 0);
 }
 
 MpOrbIntScheduler::PathEstimate MpOrbIntScheduler::evaluatePath(

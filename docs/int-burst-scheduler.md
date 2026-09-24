@@ -24,8 +24,8 @@ message and queue support remain in orbtcp because the queues process both forma
 | Mode | Main selection rule | Assignment limit |
 | --- | --- | --- |
 | `default` | Lowest queued bytes / average pacing rate | Default write-memory admission, approximately 64 KiB bursts |
-| `defaultCwnd` | Same score among paths with available window space | Remaining cwnd/rwnd/write space; one-segment starvation turn |
-| `intInformed` (MpORB) | Lowest forward delay + prospective burst drain time | Write-memory space and one-cwnd unsent backlog bound; one-segment starvation turn |
+| `defaultCwnd` | Same score among paths with available window space | Cwnd burst cap and remaining write memory; one-segment starvation turn |
+| `intInformed` (MpORB) | Lowest forward delay + prospective burst drain time | Same cwnd burst cap and write memory as defaultCwnd; one-segment starvation turn |
 | `lowestRtt` | Lowest RTT among eligible paths | Existing per-segment admission |
 | `directPull` | Subflows request data when able to send | Existing pull admission; no central path ranking |
 
@@ -83,20 +83,14 @@ and can lag route changes. Without usable INT, ranking uses smoothed RTT/2
 instead, retaining the prospective score and bounded admission. No global
 topology/route oracle or receiver HoL counter is read by the scheduler.
 
-New assignment must fit subflow write memory and meta-level space. Unsent
-assignments are bounded by `max(cwnd, MSS)`: the remaining allowance is
-`max(0, max(cwnd, MSS) - unsentBytes)`. Each burst is the smaller of the usual
-65,428-byte target, this allowance, and available write memory, rounded down to
-complete scheduling segments. The allowance is rechecked for every segment,
-including cached bursts and starvation turns. Reinjection also respects it.
-Bytes already in flight are not subtracted from this unsent allowance; TCP
-continues to enforce cwnd and the receiver window on actual transmission.
-If cwnd falls below existing backlog, assignment pauses until the backlog drains.
-The shared bounded-scheduler refill path handles empty queues on ACK/send
-callbacks; paced transmission also requests data when its queue empties.
-INT ranking is unchanged, and there is no additional time-based backlog cap.
-These rules apply to both paced and unpaced subflows. `defaultCwnd` remains a
-separate optional scheduler with its explicit window admission unchanged.
+Both `intInformed` and `defaultCwnd` share a burst-only cap:
+`min(max(cwnd, MSS), available write memory)`, additionally limited by the
+65,428-byte default burst target and rounded down to complete segments.
+Unsent and retained unacknowledged bytes consume write memory, but are **not**
+subtracted from cwnd for this cap. Repeated selections can therefore queue more
+than one cwnd. There is no cumulative unsent bound or scheduler rwnd reservation;
+TCP still enforces its cwnd/rwnd on actual transmission. Cached bursts and
+reinjection use the shared cap. Ranking is unchanged.
 
 An eligible path passed over for `CWND_MAX_SKIPPED_BURSTS` selections gets a one-segment turn,
 as in `defaultCwnd`. This prevents persistent ranking starvation when data,
