@@ -24,8 +24,8 @@ message and queue support remain in orbtcp because the queues process both forma
 | Mode | Main selection rule | Assignment limit |
 | --- | --- | --- |
 | `default` | Lowest queued bytes / average pacing rate | Default write-memory admission, approximately 64 KiB bursts |
-| `defaultCwnd` | Same score among paths with available window space | Cwnd burst cap and remaining write memory; one-segment starvation turn |
-| `intInformed` (MpORB) | Lowest forward delay + prospective burst drain time | Same cwnd burst cap and write memory as defaultCwnd; one-segment starvation turn |
+| `defaultCwnd` | Same score among paths with unsent allowance | Unsent cwnd allowance and remaining write memory; one-segment starvation turn |
+| `intInformed` (MpORB) | Lowest forward delay + prospective burst drain time | Same unsent allowance and write memory as defaultCwnd; one-segment starvation turn |
 | `lowestRtt` | Lowest RTT among eligible paths | Existing per-segment admission |
 | `directPull` | Subflows request data when able to send | Existing pull admission; no central path ranking |
 
@@ -83,14 +83,21 @@ and can lag route changes. Without usable INT, ranking uses smoothed RTT/2
 instead, retaining the prospective score and bounded admission. No global
 topology/route oracle or receiver HoL counter is read by the scheduler.
 
-Both `intInformed` and `defaultCwnd` share a burst-only cap:
-`min(max(cwnd, MSS), available write memory)`, additionally limited by the
-65,428-byte default burst target and rounded down to complete segments.
-Unsent and retained unacknowledged bytes consume write memory, but are **not**
-subtracted from cwnd for this cap. Repeated selections can therefore queue more
-than one cwnd. There is no cumulative unsent bound or scheduler rwnd reservation;
-TCP still enforces its cwnd/rwnd on actual transmission. Cached bursts and
-reinjection use the shared cap. Ranking is unchanged.
+Both `intInformed` and `defaultCwnd` share the original INT unsent allowance:
+`min(max(0, max(cwnd, MSS) - unsentBytes), available write memory)`, additionally
+limited by the 65,428-byte burst target and rounded down to complete segments.
+Cached bursts and reinjection recheck this allowance. Repeated selections cannot
+bypass the unsent bound. A cwnd reduction pauses assignment until the existing
+backlog drains; queued data is not discarded. Bytes in flight consume write
+memory but are not subtracted from the unsent allowance. TCP enforces cwnd/rwnd
+on actual transmission. The INT score is unchanged.
+
+The burst-only rollback removed this allowance and allowed a preferred path to
+absorb the meta send buffer. A tiny-window path can then lose every ranking
+comparison and receive no ACK-driven recovery opportunities. Restoring admission
+allows another path to be considered when the preferred path's unsent allowance
+is exhausted. This is not a wall-clock recovery guarantee; the existing starvation
+threshold still applies if a path remains eligible but consistently loses ranking.
 
 An eligible path passed over for `CWND_MAX_SKIPPED_BURSTS` selections gets a one-segment turn,
 as in `defaultCwnd`. This prevents persistent ranking starvation when data,

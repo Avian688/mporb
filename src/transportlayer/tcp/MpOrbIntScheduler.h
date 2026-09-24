@@ -9,7 +9,7 @@ namespace inet {
 namespace tcp {
 
 // Reuses default burst dispatch and pacing bookkeeping, with INT ranking and
-// the same cwnd burst cap and write-memory admission as defaultCwnd.
+// the same unsent cwnd allowance and write-memory admission as defaultCwnd.
 class MpOrbIntScheduler : public MpTcpPacketScheduler
 {
   public:

@@ -19,13 +19,13 @@ MpOrbIntScheduler::MpOrbIntScheduler(MpTcpConnection *connection) :
 
 SubflowConnection *MpOrbIntScheduler::selectDefaultSubflow(uint32_t bytes)
 {
-    // Recheck shared cwnd burst cap and write memory on every assignment, including cached bursts.
+    // Recheck shared unsent allowance on every assignment, including cached bursts.
     if (lastSubflow != nullptr && remainingBurstBytes >= bytes &&
             lastSubflow->isActiveForDefaultScheduler() &&
             getBoundedAssignmentSpace(lastSubflow, bytes) >= bytes)
         return lastSubflow;
 
-    // 1. Rank active paths with available write space and a cwnd burst cap.
+    // 1. Rank active paths with available write space and unsent allowance.
     SubflowConnection *bestSubflow = nullptr;
     SubflowConnection *overdueSubflow = nullptr;
     PathEstimate bestPath, overduePath;

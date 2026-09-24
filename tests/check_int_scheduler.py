@@ -143,21 +143,24 @@ constexpr bool checkSharedAllowance() {
     Scheduler s;
     SubflowConnection p;
     p.algorithm.cwnd=1448;
-    // Each selection is capped, but repeated selections may queue > cwnd.
+    // Repeated selections, including cached bursts, cannot accumulate > cwnd.
     for (int i=0; i<100; ++i) {
         if (s.getBoundedAssignmentSpace(&p,1448) >= 1448) {
             p.unsent += 1448;
             p.queued += 1448;
         }
     }
-    if (p.unsent != 144800) return false;
+    if (p.unsent != 1448) return false;
     p.unsent=0;
     if (s.getBoundedAssignmentSpace(&p,1448) != 1448) return false;
     p.algorithm.cwnd=250000; p.queued=200000; p.unsent=100000;
-    if (s.getBoundedAssignmentSpace(&p,1448) != 250000) return false;
+    if (s.getBoundedAssignmentSpace(&p,1448) != 150000) return false;
     p.rwnd=0; // TCP, not this scheduler cap, enforces the receive window.
-    if (s.getBoundedAssignmentSpace(&p,1448) != 250000) return false;
+    if (s.getBoundedAssignmentSpace(&p,1448) != 150000) return false;
     p.algorithm.cwnd=400;
+    // A window reduction stops admission until the existing backlog drains.
+    if (s.getBoundedAssignmentSpace(&p,1448) != 0) return false;
+    p.unsent=0;
     if (s.getBoundedAssignmentSpace(&p,65428) != 1448) return false;
     p.queued=p.space-500;
     if (s.getBoundedAssignmentSpace(&p,1448) != 500) return false;
@@ -165,8 +168,31 @@ constexpr bool checkSharedAllowance() {
     if (s.getBoundedAssignmentSpace(&p,1448) != 0) return false;
     return true;
 }
-static_assert(checkSharedAllowance(), "Shared burst-only cap: reselection, rwnd independence, MSS floor and write memory");
+static_assert(checkSharedAllowance(), "Shared unsent cap: reselection, cwnd reduction, rwnd independence, MSS floor and write memory");
 static_assert(checkRateBounds(), "Current, average and cwnd rate bounds; invalid rates; overflow");
+
+constexpr bool checkIdlePathRecoveryOpportunity() {
+    Scheduler s;
+    SubflowConnection good, idle;
+    good.algorithm.cwnd=250000;
+    good.unsent=250000; good.queued=500000;
+    idle.algorithm.cwnd=1448;
+    idle.pacing=idle.windowRate=1448 / 0.02;
+    idle.fresh=false; idle.rtt=0.02;
+    const auto goodPath=s.evaluatePath(&good,65428);
+    const auto idlePath=s.evaluatePath(&idle,65428);
+    // The idle path still loses the score comparison, even with stale INT.
+    // It must nevertheless be the only admissible path once the healthy
+    // path's unsent allowance is full. The burst-only regression fails here.
+    if (!(goodPath.score < idlePath.score)) return false;
+    if (goodPath.space != 0 || idlePath.space != 1448 || !idlePath.hasRate) return false;
+    // One segment can be assigned, then no more until it is transmitted.
+    idle.unsent=1448; idle.queued=1448;
+    if (s.evaluatePath(&idle,65428).space != 0) return false;
+    idle.unsent=0;
+    return s.evaluatePath(&idle,65428).space == 1448;
+}
+static_assert(checkIdlePathRecoveryOpportunity(), "Idle tiny-window path stays admissible when preferred path is full");
 """
 with tempfile.TemporaryDirectory(prefix="int-scheduler-check-") as temp:
     path = Path(temp) / "scheduler.cc"
