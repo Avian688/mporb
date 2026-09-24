@@ -14,7 +14,7 @@ namespace tcp {
 MpOrbIntScheduler::MpOrbIntScheduler(MpTcpConnection *connection) :
     MpTcpPacketScheduler(connection)
 {
-    schedulingMode = "intBurst";
+    schedulingMode = "intInformed";
 }
 
 SubflowConnection *MpOrbIntScheduler::selectDefaultSubflow(uint32_t bytes)
@@ -95,7 +95,7 @@ SubflowConnection *MpOrbIntScheduler::selectDefaultSubflow(uint32_t bytes)
             ++skipped;
     }
 
-    EV_INFO << "MpORB intBurst scheduler selected subflow " << bestSubflow->getSocketId()
+    EV_INFO << "MpORB intInformed scheduler selected subflow " << bestSubflow->getSocketId()
             << " with burst=" << remainingBurstBytes
             << " bytes, fairness turn=" << (overdueSubflow != nullptr) << "\n";
     return bestSubflow;

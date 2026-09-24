@@ -1,23 +1,23 @@
-# MpORB split-delay telemetry and intBurst scheduler
+# MpORB split-delay telemetry and intInformed scheduler
 
 Enable the scheduler on the meta connections:
 
 ```ini
-**.tcp.*.schedulerMode = "intBurst"
+**.tcp.*.schedulerMode = "intInformed"
 **.tcp.pintSeparateQueueingDelay = true
 ```
 
 Replace any earlier matching `schedulerMode` assignment: OMNeT++ uses the first
 matching assignment. Split-delay feedback is enabled by default for MpORB;
 the scheduler default remains `default`. Alpha, Pressure and Uncoupled can all
-use `intBurst`. No congestion-control equation is changed by this scheduler.
+use `intInformed`. No congestion-control equation is changed by this scheduler.
 
 ## Where the algorithms live
 
 `mptcp/MpTcpPacketScheduler.cc` owns the existing schedulers and shared burst
 dispatch. `mporb/MpOrbIntScheduler.cc` owns the INT selector, arrival score,
 write-memory admission and reinjection ranking. `MpOrbConnection::createPacketScheduler`
-selects that class only for `intBurst`; ordinary MPTCP has no INT scheduler mode.
+selects that class only for `intInformed`; ordinary MPTCP has no INT scheduler mode.
 INT parameters and diagnostic signals also live in MpORB. The shared PINT
 message and queue support remain in orbtcp because the queues process both formats.
 
@@ -25,7 +25,7 @@ message and queue support remain in orbtcp because the queues process both forma
 | --- | --- | --- |
 | `default` | Lowest queued bytes / average pacing rate | Default write-memory admission, approximately 64 KiB bursts |
 | `defaultCwnd` | Same score among paths with available window space | Remaining cwnd/rwnd/write space; one-segment starvation turn |
-| `intBurst` (MpORB) | Lowest forward delay + prospective burst drain time | Write-memory space and one-cwnd unsent backlog bound; one-segment starvation turn |
+| `intInformed` (MpORB) | Lowest forward delay + prospective burst drain time | Write-memory space and one-cwnd unsent backlog bound; one-segment starvation turn |
 | `lowestRtt` | Lowest RTT among eligible paths | Existing per-segment admission |
 | `directPull` | Subflows request data when able to send | Existing pull admission; no central path ranking |
 
@@ -127,6 +127,6 @@ Rebuild orbtcp (including generated messages), mptcp and mporb before running.
 The changed message schema is not ABI-compatible with old binaries. The
 implementation needs runtime validation for delay asymmetry, background-flow
 transitions, tiny windows, stale/saturated telemetry and route changes. Compare
-`defaultCwnd` against `intBurst`, and `intBurst` with split feedback disabled,
+`defaultCwnd` against `intInformed`, and `intInformed` with split feedback disabled,
 using the same CCA and seeds. The last comparison isolates the directional
 telemetry contribution from prospective ranking.

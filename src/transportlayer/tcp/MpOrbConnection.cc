@@ -31,7 +31,8 @@ constexpr const char *MPORB_META_ALGORITHM = "MpTcpMetaCubic";
 
 std::unique_ptr<MpTcpPacketScheduler> MpOrbConnection::createPacketScheduler(const char *mode)
 {
-    if (mode != nullptr && std::string(mode) == "intBurst")
+    // Keep the former name as an alias for existing user INIs.
+    if (mode != nullptr && (std::string(mode) == "intInformed" || std::string(mode) == "intBurst"))
         return std::make_unique<MpOrbIntScheduler>(this);
     return MpTcpConnection::createPacketScheduler(mode);
 }
