@@ -1,0 +1,184 @@
+{
+  "cases": [
+    {
+      "case": "one_path",
+      "analytical_Mbps": [
+        100.0
+      ],
+      "fluid_Mbps": [
+        99.99999999999913
+      ],
+      "relative_error": 8.64267349243164e-15,
+      "packet_projection_Mbps": [
+        96.96882205513991
+      ],
+      "packet_sample_mean": [
+        1.010974989055972
+      ],
+      "packet_queue_mean_B": [
+        11511.6
+      ]
+    },
+    {
+      "case": "one_link_two_connections",
+      "analytical_Mbps": [
+        50.0,
+        50.0
+      ],
+      "fluid_Mbps": [
+        49.99999999999957,
+        49.99999999999957
+      ],
+      "relative_error": 8.64267349243164e-15,
+      "packet_projection_Mbps": [
+        47.26213934837194,
+        49.192806015038634
+      ],
+      "packet_sample_mean": [
+        1.01074961832626
+      ],
+      "packet_queue_mean_B": [
+        12727.92
+      ]
+    },
+    {
+      "case": "two_disjoint_equal",
+      "analytical_Mbps": [
+        97.5,
+        97.5
+      ],
+      "fluid_Mbps": [
+        97.49999999999915,
+        97.49999999999915
+      ],
+      "relative_error": 8.71144808255709e-15,
+      "packet_projection_Mbps": [
+        93.72007619047818,
+        93.71717293233283
+      ],
+      "packet_sample_mean": [
+        0.9790359752919925,
+        0.978641709261212
+      ],
+      "packet_queue_mean_B": [
+        3612.76,
+        3652.58
+      ]
+    },
+    {
+      "case": "two_disjoint_unequal_rtt",
+      "analytical_Mbps": [
+        97.5,
+        97.5
+      ],
+      "fluid_Mbps": [
+        97.5000000000005,
+        97.49999999999794
+      ],
+      "relative_error": 2.1090874305138222e-14,
+      "packet_projection_Mbps": [
+        95.58396791980152,
+        92.24231779448817
+      ],
+      "packet_sample_mean": [
+        0.9828087891478228,
+        0.9709835809388166
+      ],
+      "packet_queue_mean_B": [
+        1078.76,
+        6244.5
+      ]
+    },
+    {
+      "case": "two_disjoint_unequal_capacity",
+      "analytical_Mbps": [
+        98.3527118683145,
+        48.323644065842736
+      ],
+      "fluid_Mbps": [
+        98.35271186831538,
+        48.32364406584244
+      ],
+      "relative_error": 8.938935121729433e-15,
+      "packet_projection_Mbps": [
+        96.10655438596696,
+        46.963103759399495
+      ],
+      "packet_sample_mean": [
+        0.9928523140238618,
+        0.9740578101767526
+      ],
+      "packet_queue_mean_B": [
+        4930.44,
+        1038.94
+      ]
+    },
+    {
+      "case": "two_shared_same_connection",
+      "analytical_Mbps": [
+        30.0,
+        70.0
+      ],
+      "fluid_Mbps": [
+        29.999999999999538,
+        69.99999999999909
+      ],
+      "relative_error": 1.539786656697591e-14,
+      "packet_projection_Mbps": [
+        12.771432581453906,
+        83.59641503759576
+      ],
+      "packet_sample_mean": [
+        1.013775516111132
+      ],
+      "packet_queue_mean_B": [
+        15149.7
+      ]
+    },
+    {
+      "case": "two_disjoint_uncoupled",
+      "analytical_Mbps": [
+        100.0,
+        100.0
+      ],
+      "fluid_Mbps": [
+        99.99999999999913,
+        99.99999999999913
+      ],
+      "relative_error": 8.64267349243164e-15,
+      "packet_projection_Mbps": [
+        96.96882205513991,
+        96.96882205513991
+      ],
+      "packet_sample_mean": [
+        1.010974989055972,
+        1.010974989055972
+      ],
+      "packet_queue_mean_B": [
+        11511.6,
+        11511.6
+      ]
+    }
+  ],
+  "checks": {
+    "regular_spacing_U": 0.5,
+    "bursty_spacing_U_mean": 0.9900990099009901,
+    "both_mean_payload_load": 0.5,
+    "overhead_equilibrium": {
+      "analytical_Mbps": 96.53333333333333,
+      "fluid_Mbps": 96.53333333333342,
+      "analytical_queue_B": 18280.165088613743,
+      "fluid_queue_B": 18280.165088618112,
+      "U": 1.0018936635105609
+    },
+    "dt_halving_max_rate_difference_Bps": 1.0617077350616455e-07
+  },
+  "duration_s": 8,
+  "dt_s": 0.0002,
+  "source_sha256": {
+    "samples/orbtcp/src/queueing/queue/PintQueue.cc": "1b2e65a1cd1b0a706f9a3d12ab4f7c301271f066e42986bcb1c7e6dfe48e6c2e",
+    "samples/orbtcp/src/transportlayer/orbtcp/flavours/OrbtcpPintFlavour.cc": "ba75f7f696cc22d1b9b4b4ce6181c9956e2e204d971d040a75aee997fc04ae21",
+    "samples/orbtcp/src/transportlayer/orbtcp/flavours/OrbtcpFlavour.cc": "db177976c929eb61491aaba15318cb6717d6529b3136b6decae307ad4da1f8f4",
+    "samples/mporb/src/transportlayer/tcp/flavours/MpOrbSemiCoupledAlpha.cc": "4322b4cde0ac6620323e2546aa033d813153196343067575852aa0474f38d721"
+  }
+}
