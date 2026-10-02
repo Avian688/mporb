@@ -20,6 +20,7 @@
 
 #include "../../../../mptcp/src/transportlayer/tcp/SubflowConnection.h"
 #include "../../../../orbtcp/src/common/IntTag_m.h"
+#include "../../../../orbtcp/src/common/OmegaPriceTag.h"
 
 namespace inet {
 namespace tcp {
@@ -28,6 +29,7 @@ class MpOrbSubflowConnection : public SubflowConnection
 {
   protected:
     std::vector<IntDataVec> intDataContextStack;
+    std::vector<Ptr<const OmegaPriceTag>> priceContextStack;
     bool hasDelayPath = false;
     bool hasDelayFeedback = false;
     uint32_t delayPathDigest = 0;
@@ -52,6 +54,7 @@ class MpOrbSubflowConnection : public SubflowConnection
 
     virtual void sendIntAck(const IntDataVec& intData);
     virtual IntDataVec getCurrentIntData() const;
+    Ptr<const OmegaPriceTag> getCurrentOmegaPrice() const;
     virtual bool getSchedulerForwardDelay(simtime_t& delay) const;
 };
 

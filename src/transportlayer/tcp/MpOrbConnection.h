@@ -27,6 +27,10 @@ namespace tcp {
 class MpOrbConnection : public MpTcpConnection
 {
   public:
+    virtual ~MpOrbConnection();
+    void startOmegaControl();
+    virtual bool processTimer(cMessage *msg) override;
+    virtual void prepareForRemoval() override;
     struct PressureAllocation {
         double fairRate = 0;
         double subflowRate = 0;
@@ -43,6 +47,14 @@ class MpOrbConnection : public MpTcpConnection
     virtual void removeSubflow(SubflowConnection *subflow) override;
 
   protected:
+    // One timer and one rate update for the entire Omega connection.
+    cMessage *omegaTimer = nullptr;
+    simtime_t omegaInterval;
+    simtime_t omegaLastUpdate;
+    double omegaRateScale = 0;
+    double omegaRateGain = 0;
+    double omegaMinRtt = 0;
+    void updateOmegaRates();
     virtual std::unique_ptr<MpTcpPacketScheduler> createPacketScheduler(const char *mode) override;
 
     struct PressureFeedback {

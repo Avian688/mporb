@@ -21,4 +21,6 @@ simple MpOrbConnection extends MpTcpConnection
 {
     parameters:
         @class("inet::tcp::MpOrbConnection");
+        @signal[omegaConnectionTargetRate](type=double; unit=bps);
+        @statistic[omegaConnectionTargetRate](record=vector; interpolationmode=sample-hold);
 }

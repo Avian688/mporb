@@ -28,6 +28,11 @@ simple MpOrb extends MpTcp
         double additiveIncreasePercent = default(0.05);
         double eta = default(0.95);
         double alpha = default(0.03);
+        // Common rate unit for log-utility prices, NOT a requested connection rate.
+        double omegaRateScale @unit(bps) = default(100Mbps);
+        double omegaRateGain = default(0.1);
+        double omegaControlInterval @unit(s) = default(5ms);
+        double omegaMinRtt @unit(s) = default(20ms);
         double pintFeedbackProbability = default(1);
         int pintFlowCountBits = default(8);
         int pintMaxFlowCount = default(65535);

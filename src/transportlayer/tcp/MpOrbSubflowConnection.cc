@@ -22,6 +22,7 @@
 #include "../../../../orbtcp/src/common/PintSenderTelemetry.h"
 #include "../../../../orbtcp/src/common/PintQueueingDelay.h"
 #include "flavours/MpOrbUncoupled.h"
+#include "flavours/MpOrbOmega.h"
 
 namespace inet {
 namespace tcp {
@@ -46,6 +47,7 @@ const char *MpOrbSubflowConnection::getSubflowAlgorithmClass() const
 
 void MpOrbSubflowConnection::pushIntContext(const Ptr<const TcpHeader>& tcpHeader)
 {
+    priceContextStack.push_back(tcpHeader != nullptr ? tcpHeader->findTag<OmegaPriceTag>() : nullptr);
     if (tcpHeader != nullptr && tcpHeader->findTag<IntTag>())
         intDataContextStack.push_back(tcpHeader->getTag<IntTag>()->getIntData());
     else
@@ -54,6 +56,8 @@ void MpOrbSubflowConnection::pushIntContext(const Ptr<const TcpHeader>& tcpHeade
 
 void MpOrbSubflowConnection::popIntContext()
 {
+    if (!priceContextStack.empty())
+        priceContextStack.pop_back();
     if (!intDataContextStack.empty())
         intDataContextStack.pop_back();
 }
@@ -64,6 +68,11 @@ IntDataVec MpOrbSubflowConnection::getCurrentIntData() const
         return IntDataVec();
 
     return intDataContextStack.back();
+}
+
+Ptr<const OmegaPriceTag> MpOrbSubflowConnection::getCurrentOmegaPrice() const
+{
+    return priceContextStack.empty() ? nullptr : priceContextStack.back();
 }
 
 bool MpOrbSubflowConnection::openActive(L3Address localAddr, L3Address remoteAddr, int localPort, int remotePort)
@@ -186,6 +195,12 @@ bool MpOrbSubflowConnection::getSchedulerForwardDelay(simtime_t& delay) const
 
 void MpOrbSubflowConnection::sendToIP(Packet *tcpSegment, const Ptr<TcpHeader>& tcpHeader)
 {
+    if (tcpSegment != nullptr && tcpHeader != nullptr && tcpSegment->getByteLength() > 0 &&
+            dynamic_cast<MpOrbOmega *>(tcpAlgorithm) != nullptr) {
+        // A retransmission makes a new forward measurement too.
+        tcpHeader->addTagIfAbsent<OmegaPriceTag>();
+        *tcpHeader->addTagIfAbsent<OmegaPriceTag>() = OmegaPriceTag();
+    }
     if (tcpSegment != nullptr && tcpHeader != nullptr && tcpSegment->getByteLength() > 0 && !tcpHeader->findTag<IntTag>()) {
         auto *orbAlg = dynamic_cast<OrbtcpFamily *>(tcpAlgorithm);
         if (orbAlg != nullptr) {
@@ -236,6 +251,11 @@ void MpOrbSubflowConnection::sendIntAck(const IntDataVec& intData)
     auto intTag = tcpHeader->addTagIfAbsent<IntTag>();
     for (const auto& item : intData)
         intTag->getIntDataForUpdate().push_back(item);
+    if (auto price = getCurrentOmegaPrice()) {
+        auto echoedPrice = tcpHeader->addTagIfAbsent<OmegaPriceTag>();
+        *echoedPrice = *price;
+        echoedPrice->echoed = true;
+    }
     if (auto *orbAlgorithm = dynamic_cast<OrbtcpFamily *>(tcpAlgorithm)) {
         if (orbAlgorithm->usesPintTelemetry() && tcpMain->par("pintSeparateQueueingDelay").boolValue()) {
             for (auto& sample : intTag->getIntDataForUpdate()) {

@@ -29,6 +29,16 @@ simple MpOrbSubflowConnection extends SubflowConnection
         @statistic[intSchedulerFreshFeedback](record=vector; interpolationmode=sample-hold);
         @statistic[intSchedulerProbe](record=vector; interpolationmode=sample-hold);
         @class("inet::tcp::MpOrbSubflowConnection");
+        @signal[omegaTargetRate](type=double; unit=bps);
+        @signal[omegaPathPrice](type=double);
+        @signal[omegaDeliveryRate](type=double; unit=bps);
+        @signal[omegaFairShareReference](type=double; unit=bps);
+        @signal[omegaPriceFresh](type=bool);
+        @statistic[omegaTargetRate](record=vector; interpolationmode=sample-hold);
+        @statistic[omegaPathPrice](record=vector; interpolationmode=sample-hold);
+        @statistic[omegaDeliveryRate](record=vector; interpolationmode=sample-hold);
+        @statistic[omegaFairShareReference](record=vector; interpolationmode=sample-hold);
+        @statistic[omegaPriceFresh](record=vector; interpolationmode=sample-hold);
 
         @signal[txRate];
         @signal[tau];
@@ -67,6 +77,10 @@ simple MpOrbSubflowConnection extends SubflowConnection
         @signal[mpOrbBetaAlphaAi](type=long);
         @signal[mpOrbBetaUncoupledAi](type=long);
         @signal[mpOrbBetaWeightedAi](type=long);
+        @signal[mpOrbDeltaEligibleSubflows](type=long);
+        @signal[mpOrbDeltaWeight](type=double);
+        @signal[mpOrbDeltaUncoupledAi](type=long);
+        @signal[mpOrbDeltaWeightedAi](type=long);
         @signal[semiCoupledEpsilonPathCost];
         @signal[semiCoupledEpsilonDesiredShare];
         @signal[semiCoupledEpsilonRateShare];
@@ -132,6 +146,10 @@ simple MpOrbSubflowConnection extends SubflowConnection
         @statistic[mpOrbBetaAlphaAi](record=vector; unit=B; interpolationmode=sample-hold);
         @statistic[mpOrbBetaUncoupledAi](record=vector; unit=B; interpolationmode=sample-hold);
         @statistic[mpOrbBetaWeightedAi](record=vector; unit=B; interpolationmode=sample-hold);
+        @statistic[mpOrbDeltaEligibleSubflows](record=vector; interpolationmode=sample-hold);
+        @statistic[mpOrbDeltaWeight](record=vector; interpolationmode=sample-hold);
+        @statistic[mpOrbDeltaUncoupledAi](record=vector; unit=B; interpolationmode=sample-hold);
+        @statistic[mpOrbDeltaWeightedAi](record=vector; unit=B; interpolationmode=sample-hold);
         @statistic[semiCoupledEpsilonPathCost](record=vector; interpolationmode=sample-hold);
         @statistic[semiCoupledEpsilonDesiredShare](record=vector; interpolationmode=sample-hold);
         @statistic[semiCoupledEpsilonRateShare](record=vector; interpolationmode=sample-hold);
