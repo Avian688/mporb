@@ -1,4 +1,5 @@
 ../out/clang-release/src/transportlayer/tcp/MpOrb.o: \
+  /Library/Developer/CommandLineTools/SDKs/MacOSX27.sdk/SDKSettings.json \
   transportlayer/tcp/MpOrb.cc transportlayer/tcp/MpOrb.h \
   transportlayer/tcp/../../../../mptcp/src/transportlayer/tcp/MpTcp.h \
   ../../inet4.5/src/inet/transportlayer/tcp/TcpConnection.h \
@@ -7,7 +8,7 @@
   ../../inet4.5/src/inet/common/INETDefs.h \
   ../../inet4.5/src/inet/common/precompiled_release.h \
   ../../inet4.5/src/inet/common/precompiled.h \
-  /Users/av288/omnetpp-6.3.0/include/omnetpp.h \
+  /Users/av288/omnetpp-6.4.0/include/omnetpp.h \
   ../../inet4.5/src/inet/opp_defines.h ../../inet4.5/src/inet/features.h \
   ../../inet4.5/src/inet/common/Compat.h \
   ../../inet4.5/src/inet/common/InitStages.h \
@@ -119,6 +120,7 @@
   transportlayer/tcp/../../../../mptcp/src/transportlayer/tcp/SubflowConnection.h \
   transportlayer/tcp/../../../../mptcp/src/transportlayer/tcp/TcpOpenSubflowCommand_m.h \
   transportlayer/tcp/../../../../mptcp/src/transportlayer/tcp/../../common/DataSequenceNumberTag_m.h
+/Library/Developer/CommandLineTools/SDKs/MacOSX27.sdk/SDKSettings.json:
 transportlayer/tcp/MpOrb.h:
 transportlayer/tcp/../../../../mptcp/src/transportlayer/tcp/MpTcp.h:
 ../../inet4.5/src/inet/transportlayer/tcp/TcpConnection.h:
@@ -127,7 +129,7 @@ transportlayer/tcp/../../../../mptcp/src/transportlayer/tcp/MpTcp.h:
 ../../inet4.5/src/inet/common/INETDefs.h:
 ../../inet4.5/src/inet/common/precompiled_release.h:
 ../../inet4.5/src/inet/common/precompiled.h:
-/Users/av288/omnetpp-6.3.0/include/omnetpp.h:
+/Users/av288/omnetpp-6.4.0/include/omnetpp.h:
 ../../inet4.5/src/inet/opp_defines.h:
 ../../inet4.5/src/inet/features.h:
 ../../inet4.5/src/inet/common/Compat.h:

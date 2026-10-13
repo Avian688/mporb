@@ -18,11 +18,10 @@
 #include <cstring>
 #include <cmath>
 
-#include "../../../../mptcp/src/transportlayer/tcp/MpTcpConnection.h"
 #include "../../../../orbtcp/src/common/PintSenderTelemetry.h"
 #include "../../../../orbtcp/src/common/PintQueueingDelay.h"
-#include "flavours/MpOrbUncoupled.h"
 #include "flavours/MpOrbOmega.h"
+#include "flavours/MpOrbSemiCoupledDelta.h"
 
 namespace inet {
 namespace tcp {
@@ -47,6 +46,7 @@ const char *MpOrbSubflowConnection::getSubflowAlgorithmClass() const
 
 void MpOrbSubflowConnection::pushIntContext(const Ptr<const TcpHeader>& tcpHeader)
 {
+    deltaContextStack.push_back(tcpHeader != nullptr ? tcpHeader->findTag<DeltaShuffleTag>() : nullptr);
     priceContextStack.push_back(tcpHeader != nullptr ? tcpHeader->findTag<OmegaPriceTag>() : nullptr);
     if (tcpHeader != nullptr && tcpHeader->findTag<IntTag>())
         intDataContextStack.push_back(tcpHeader->getTag<IntTag>()->getIntData());
@@ -56,6 +56,8 @@ void MpOrbSubflowConnection::pushIntContext(const Ptr<const TcpHeader>& tcpHeade
 
 void MpOrbSubflowConnection::popIntContext()
 {
+    if (!deltaContextStack.empty())
+        deltaContextStack.pop_back();
     if (!priceContextStack.empty())
         priceContextStack.pop_back();
     if (!intDataContextStack.empty())
@@ -68,6 +70,11 @@ IntDataVec MpOrbSubflowConnection::getCurrentIntData() const
         return IntDataVec();
 
     return intDataContextStack.back();
+}
+
+Ptr<const DeltaShuffleTag> MpOrbSubflowConnection::getCurrentDeltaShuffle() const
+{
+    return deltaContextStack.empty() ? nullptr : deltaContextStack.back();
 }
 
 Ptr<const OmegaPriceTag> MpOrbSubflowConnection::getCurrentOmegaPrice() const
@@ -169,11 +176,10 @@ void MpOrbSubflowConnection::updateAckTelemetry(const Ptr<const TcpHeader>& tcpH
             sample.getQueueingDelayCode() < pint::QUEUEING_DELAY_MAX_CODE &&
             sample.getReverseQueueingDelayCode() < pint::QUEUEING_DELAY_MAX_CODE;
     forwardQueueingDelay = pint::decodeQueueingDelay(sample.getQueueingDelayCode());
-    reverseQueueingDelay = pint::decodeQueueingDelay(sample.getReverseQueueingDelayCode());
     static const simsignal_t forwardSignal = registerSignal("mpOrbForwardQueueingDelay");
     static const simsignal_t reverseSignal = registerSignal("mpOrbReverseQueueingDelay");
     emit(forwardSignal, forwardQueueingDelay);
-    emit(reverseSignal, reverseQueueingDelay);
+    emit(reverseSignal, pint::decodeQueueingDelay(sample.getReverseQueueingDelayCode()));
 }
 
 bool MpOrbSubflowConnection::getSchedulerForwardDelay(simtime_t& delay) const
@@ -195,6 +201,12 @@ bool MpOrbSubflowConnection::getSchedulerForwardDelay(simtime_t& delay) const
 
 void MpOrbSubflowConnection::sendToIP(Packet *tcpSegment, const Ptr<TcpHeader>& tcpHeader)
 {
+    if (tcpSegment != nullptr && tcpHeader != nullptr && tcpSegment->getByteLength() > 0) {
+        if (auto *delta = dynamic_cast<MpOrbSemiCoupledDelta *>(tcpAlgorithm)) {
+            tcpHeader->addTagIfAbsent<DeltaShuffleTag>(); // Detach COW tags first.
+            delta->stampTelemetry(*tcpHeader->addTagIfAbsent<DeltaShuffleTag>());
+        }
+    }
     if (tcpSegment != nullptr && tcpHeader != nullptr && tcpSegment->getByteLength() > 0 &&
             dynamic_cast<MpOrbOmega *>(tcpAlgorithm) != nullptr) {
         // A retransmission makes a new forward measurement too.
@@ -251,6 +263,11 @@ void MpOrbSubflowConnection::sendIntAck(const IntDataVec& intData)
     auto intTag = tcpHeader->addTagIfAbsent<IntTag>();
     for (const auto& item : intData)
         intTag->getIntDataForUpdate().push_back(item);
+    if (auto shuffle = getCurrentDeltaShuffle()) {
+        auto echoedShuffle = tcpHeader->addTagIfAbsent<DeltaShuffleTag>();
+        *echoedShuffle = *shuffle;
+        echoedShuffle->echoed = true;
+    }
     if (auto price = getCurrentOmegaPrice()) {
         auto echoedPrice = tcpHeader->addTagIfAbsent<OmegaPriceTag>();
         *echoedPrice = *price;

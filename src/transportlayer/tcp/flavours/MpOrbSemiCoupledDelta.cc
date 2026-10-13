@@ -1,71 +1,75 @@
 // SPDX-License-Identifier: LGPL-3.0-or-later
 #include "MpOrbSemiCoupledDelta.h"
+#include "../MpOrbSubflowConnection.h"
 #include "../../../../../mptcp/src/transportlayer/tcp/MpTcpConnection.h"
-
 #include <algorithm>
 #include <cmath>
-
-namespace inet {
-namespace tcp {
-
+#include <limits>
+namespace inet { namespace tcp {
 Register_Class(MpOrbSemiCoupledDelta);
 
-simsignal_t MpOrbSemiCoupledDelta::eligibleSubflowsSignal = cComponent::registerSignal("mpOrbDeltaEligibleSubflows");
-simsignal_t MpOrbSemiCoupledDelta::weightSignal = cComponent::registerSignal("mpOrbDeltaWeight");
-simsignal_t MpOrbSemiCoupledDelta::uncoupledAiSignal = cComponent::registerSignal("mpOrbDeltaUncoupledAi");
-simsignal_t MpOrbSemiCoupledDelta::weightedAiSignal = cComponent::registerSignal("mpOrbDeltaWeightedAi");
-
-void MpOrbSemiCoupledDelta::adjustAdditiveIncrease()
+void MpOrbSemiCoupledDelta::stampTelemetry(DeltaShuffleTag& tag)
 {
-    if (state == nullptr || firstRTT || state->initialPhase || state->srtt <= SIMTIME_ZERO)
-        return; // Preserve OrbCC's startup rule.
-
-    auto *meta = getMetaConnection();
-    if (meta == nullptr)
-        return;
-
-    double connectionRate = 0, ownRate = 0;
-    uint32_t eligibleSubflows = 0;
-    for (auto *subflow : meta->getSubflows()) {
-        // Keep Alpha's pool, counting exactly the rates in the denominator.
-        if (subflow == nullptr ||
-                (subflow->getFsmState() != TCP_S_ESTABLISHED &&
-                 subflow->getFsmState() != TCP_S_CLOSE_WAIT) ||
-                dynamic_cast<MpOrbSemiCoupledAlpha *>(subflow->getTcpAlgorithm()) == nullptr)
-            continue;
-        const auto *s = static_cast<const OrbtcpStateVariables *>(subflow->getState());
-        if (s == nullptr || s->srtt <= SIMTIME_ZERO)
-            continue;
-        const double rate = s->snd_cwnd / s->srtt.dbl();
-        if (!std::isfinite(rate) || rate <= 0)
-            continue;
-        connectionRate += rate;
-        ++eligibleSubflows;
-        if (subflow == conn)
-            ownRate = rate;
+    tag = DeltaShuffleTag();
+    tag.serial = ++nextSerial;
+    auto rate = [](const OrbtcpStateVariables *s) {
+        // Nominal cwnd/RTT rate, not a measured delivery rate. Bootstrap before RTT.
+        return s->snd_cwnd / (s->srtt > SIMTIME_ZERO ? s->srtt.dbl() : 0.02);
+    };
+    tag.subflowRate = rate(state);
+    if (auto *meta = check_and_cast<MpOrbSubflowConnection *>(conn)->getMetaConnection()) {
+        for (auto *sf : meta->getSubflows()) {
+            if (dynamic_cast<MpOrbSemiCoupledDelta *>(sf->getTcpAlgorithm()) &&
+                    sf->isTransportActiveForScheduler() && !sf->isSchedulerStale())
+                tag.connectionRate += rate(static_cast<const OrbtcpStateVariables *>(sf->getState()));
+        }
     }
-    if (!std::isfinite(connectionRate) || connectionRate <= 0 || ownRate <= 0)
-        return;
-
-    const double rateShare = ownRate / connectionRate;
-    const double weight = std::min(1.0, eligibleSubflows * rateShare);
-    const uint32_t uncoupledAi = state->additiveIncrease;
-    if (uncoupledAi > 0) {
-        // Use the parent's uncoupled AI directly, not Alpha's already-scaled AI
-        // or its experimental boost. Retain fractional-byte credit as in Alpha.
-        const double exactAi = uncoupledAi * weight + additiveIncreaseResidual;
-        state->additiveIncrease = static_cast<uint32_t>(exactAi);
-        additiveIncreaseResidual = exactAi - state->additiveIncrease;
-    }
-
-    conn->emit(subflowRateSignal, ownRate);
-    conn->emit(connectionRateSignal, connectionRate);
-    conn->emit(rateShareSignal, rateShare);
-    conn->emit(eligibleSubflowsSignal, static_cast<unsigned long>(eligibleSubflows));
-    conn->emit(weightSignal, weight);
-    conn->emit(uncoupledAiSignal, static_cast<unsigned long>(uncoupledAi));
-    conn->emit(weightedAiSignal, static_cast<unsigned long>(state->additiveIncrease));
+    tag.connectionRate = std::max(tag.subflowRate, tag.connectionRate);
+    static const simsignal_t xSignal = cComponent::registerSignal("mpOrbDeltaSubflowRate");
+    static const simsignal_t totalSignal = cComponent::registerSignal("mpOrbDeltaConnectionRate");
+    conn->emit(xSignal, 8 * tag.subflowRate);
+    conn->emit(totalSignal, 8 * tag.connectionRate);
 }
 
-} // namespace tcp
-} // namespace inet
+double MpOrbSemiCoupledDelta::measureInflight(const IntDataVec& data)
+{
+    auto tag = check_and_cast<MpOrbSubflowConnection *>(conn)->getCurrentDeltaShuffle();
+    if (tag && tag->echoed && tag->hops > 0 && tag->serial > lastShuffleSerial &&
+            std::isfinite(tag->shuffle)) {
+        lastShuffleSerial = tag->serial;
+        // A rate change becomes a cwnd change through this subflow's RTT.
+        if (state->srtt > SIMTIME_ZERO)
+            pendingShuffleBytes += tag->shuffle * state->srtt.dbl();
+        static const simsignal_t needSignal = cComponent::registerSignal("mpOrbDeltaNeed");
+        static const simsignal_t rawSignal = cComponent::registerSignal("mpOrbDeltaRawShuffle");
+        static const simsignal_t shuffleSignal = cComponent::registerSignal("mpOrbDeltaReturnedShuffle");
+        conn->emit(needSignal, tag->need);
+        conn->emit(rawSignal, 8 * tag->rawShuffle);
+        conn->emit(shuffleSignal, 8 * tag->shuffle);
+    }
+    // Inherit Alpha's virtual AI hook (x_r/X), startup and local U-based MD.
+    return MpOrbSemiCoupledAlpha::measureInflight(data);
+}
+
+uint32_t MpOrbSemiCoupledDelta::computeWnd(double u, bool updateWc)
+{
+    const uint32_t orbWindow = MpOrbSemiCoupledAlpha::computeWnd(u, updateWc);
+    // Fast Alpha feedback remains unchanged. Its growth gate may return the
+    // current cwnd, which already includes an earlier adjustment; adding the
+    // pending shuffle on every ACK would then spend it repeatedly.
+    if (!updateWc)
+        return orbWindow;
+
+    const double wholeBytes = std::trunc(pendingShuffleBytes);
+    const uint32_t window = static_cast<uint32_t>(std::clamp(orbWindow + wholeBytes,
+            static_cast<double>(state->snd_mss),
+            static_cast<double>(std::numeric_limits<uint32_t>::max())));
+    // Apply and consume once at OrbCC's normal RTT-paced commit.
+    state->prevWnd = window;
+    pendingShuffleBytes -= wholeBytes; // keep sub-byte rounding only
+    static const simsignal_t appliedSignal = cComponent::registerSignal("mpOrbDeltaAppliedShuffle");
+    if (state->srtt > SIMTIME_ZERO)
+        conn->emit(appliedSignal, 8 * (static_cast<double>(window) - orbWindow) / state->srtt.dbl());
+    return window;
+}
+} }

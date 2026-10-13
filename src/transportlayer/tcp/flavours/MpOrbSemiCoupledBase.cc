@@ -7,76 +7,19 @@
 
 #include "MpOrbSemiCoupledBase.h"
 
-#include <algorithm>
-#include <cmath>
 #include <functional>
 #include <string>
 
 #include "../MpOrbSubflowConnection.h"
 #include "../../../../../mptcp/src/transportlayer/tcp/MpTcpConnection.h"
-#include "../../../../../tcpPaced/src/transportlayer/tcp/TcpPacedConnection.h"
 
 namespace inet {
 namespace tcp {
-
-namespace {
-constexpr double DELIVERY_RATE_EWMA_GAIN = 0.125;
-}
 
 MpTcpConnection *MpOrbSemiCoupledBase::getMetaConnection() const
 {
     auto *subflow = dynamic_cast<MpOrbSubflowConnection *>(conn);
     return subflow != nullptr ? subflow->getMetaConnection() : nullptr;
-}
-
-void MpOrbSemiCoupledBase::refreshDeliveryRate()
-{
-    if (hasPathDigest) {
-        if (hasObservedPathDigest && observedPathDigest != lastPathDigest) {
-            smoothedDeliveryRate = 0.0;
-            deliveryRateUpdatedAt = SIMTIME_ZERO;
-        }
-        observedPathDigest = lastPathDigest;
-        hasObservedPathDigest = true;
-    }
-
-    auto *pacedConnection = dynamic_cast<TcpPacedConnection *>(conn);
-    if (pacedConnection == nullptr)
-        return;
-
-    const auto sample = pacedConnection->getRateSample();
-    const double deliveryRate = sample.m_deliveryRate;
-    if (deliveryRate <= 0.0 || sample.m_interval <= SIMTIME_ZERO ||
-            !std::isfinite(deliveryRate))
-        return;
-
-    smoothedDeliveryRate = smoothedDeliveryRate > 0.0 ?
-            (1.0 - DELIVERY_RATE_EWMA_GAIN) * smoothedDeliveryRate +
-            DELIVERY_RATE_EWMA_GAIN * deliveryRate : deliveryRate;
-    deliveryRateUpdatedAt = simTime();
-}
-
-double MpOrbSemiCoupledBase::getDeliveryRate(const MpOrbSemiCoupledBase *algorithm,
-        const OrbtcpStateVariables *subflowState) const
-{
-    if (algorithm == nullptr || subflowState == nullptr ||
-            algorithm->deliveryRateUpdatedAt == SIMTIME_ZERO ||
-            subflowState->srtt <= SIMTIME_ZERO)
-        return -1.0;
-
-    double deliveryRate = algorithm->smoothedDeliveryRate;
-    if (!std::isfinite(deliveryRate) || deliveryRate < 0.0)
-        return -1.0;
-
-    if (simTime() - algorithm->deliveryRateUpdatedAt > subflowState->srtt * 2)
-        deliveryRate = 0.0;
-
-    // txRate is aggregate bottleneck service reconstructed from PINT U and B. It is
-    // not a per-subflow rate, but it is a useful upper bound on a stale sample.
-    if (subflowState->txRate > 0.0 && std::isfinite(subflowState->txRate))
-        deliveryRate = std::min(deliveryRate, subflowState->txRate);
-
-    return deliveryRate;
 }
 
 size_t MpOrbSemiCoupledBase::getConnId()

@@ -8,8 +8,6 @@
 #ifndef MPORB_TRANSPORTLAYER_TCP_FLAVOURS_MPORBSEMICOUPLEDBASE_H_
 #define MPORB_TRANSPORTLAYER_TCP_FLAVOURS_MPORBSEMICOUPLEDBASE_H_
 
-#include <cstdint>
-
 #include "MpOrbUncoupled.h"
 
 namespace inet {
@@ -18,22 +16,14 @@ namespace tcp {
 class MpTcpConnection;
 
 /**
- * Shared plumbing for experimental semi-coupled MPORB versions.
+ * Meta-connection access and telemetry identity for semi-coupled MPORB flavours.
  *
  * This class is deliberately not registered as a selectable TCP algorithm.
  */
 class MpOrbSemiCoupledBase : public MpOrbUncoupled
 {
   protected:
-    double smoothedDeliveryRate = 0.0;
-    simtime_t deliveryRateUpdatedAt = SIMTIME_ZERO;
-    uint32_t observedPathDigest = 0;
-    bool hasObservedPathDigest = false;
-
     virtual MpTcpConnection *getMetaConnection() const;
-    virtual void refreshDeliveryRate();
-    virtual double getDeliveryRate(const MpOrbSemiCoupledBase *algorithm,
-            const OrbtcpStateVariables *subflowState) const;
 
   public:
     virtual size_t getConnId() override;

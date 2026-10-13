@@ -43,9 +43,4 @@ simple MpOrb extends MpTcp
         double mpOrbBetaRedistributionGain = default(0.5); // [0,1]: strength of the centred U-error AI correction; 0 uses plain Alpha
         double mpOrbBetaUtilizationDeadband = default(0.05); // Absolute U tolerance around eta
         double mpOrbBetaSmoothingRtts = default(1); // Measurement-time U averaging for coupling, in subflow RTTs
-        double mpOrbUBeta = default(20); // Sensitivity of normalised exp(-beta * U / eta) AI weights
-        double mpOrbUSmoothingRtts = default(1); // Time constant for MpOrbU's utilisation EWMA
-        double mpOrbPressureDecreaseGain = default(1);
-        double mpOrbPressureMaxDecreaseFraction = default(0.25);
-        int mpOrbPressureProbeIntervalRtts = default(4);
 }

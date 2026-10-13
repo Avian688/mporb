@@ -1,191 +1,120 @@
 #!/usr/bin/env python3
-"""Constant-evaluate Delta's production AI hook; no executable or simulator built.
-
-Transport plumbing is stubbed. The Alpha hook intentionally doubles AI, to
-detect accidentally scaling Alpha's output instead of the incoming OrbCC AI.
-"""
+"""Compile-time checks only; no executable or OMNeT++ simulation."""
 from pathlib import Path
-import re
 import subprocess
 import tempfile
-
 ROOT = Path(__file__).resolve().parents[1]
-FLAVOURS = ROOT / 'src/transportlayer/tcp/flavours'
-source = (FLAVOURS / 'MpOrbSemiCoupledDelta.cc').read_text()
-start = source.index('void MpOrbSemiCoupledDelta::adjustAdditiveIncrease()')
-method = source[start:source.index('\n} // namespace tcp', start)]
-method = method.replace('void MpOrbSemiCoupledDelta::', 'constexpr void MpOrbSemiCoupledDelta::')
-header = (FLAVOURS / 'MpOrbSemiCoupledDelta.h').read_text()
-header = header[header.index('class MpOrbSemiCoupledDelta'):header.index('\n};') + 3]
-header = header.replace('  protected:', '  public:').replace('void adjustAdditiveIncrease()',
-                                                         'constexpr void adjustAdditiveIncrease()')
-signal_ids = {}
+COMMON = ROOT.parent / 'orbtcp/src/common'
+SOURCE = r'''
+#include "DeltaShuffle.h"
+using namespace inet::delta;
+constexpr bool near(double a, double b) { return a-b < 1e-8 && b-a < 1e-8; }
+constexpr double absval(double a) { return a < 0 ? -a : a; }
+constexpr bool equalNeeds() {
+    LinkShuffle link;
+    link.issue(0, 5, 1, 2);
+    link.issue(0, 5, 1, 2);
+    return link.issue(1, 5, 1, 2).returned == 0 && link.issue(1, 5, 1, 2).returned == 0;
+}
+static_assert(equalNeeds(), "Equal connection need must produce no shuffle");
+constexpr bool strongerSmallGap() {
+    LinkShuffle old, revised;
+    for (auto *link : {&old, &revised}) {
+        link->issue(0, 5, 1, 1.1);
+        link->issue(0, 5, 1, 1.0);
+    }
+    const double before = old.issue(1, 5, 1, 1.1, 1).returned;
+    const double after = revised.issue(1, 5, 1, 1.1, 8).returned;
+    const double donor = revised.issue(1, 5, 1, 1.0, 8).returned;
+    return before > 0 && near(after, 8*before) && near(after+donor, 0) && revised.magnitude<=5;
+}
+static_assert(strongerSmallGap(), "Stronger correction near equal rates retains matching negative feedback");
 
+constexpr bool stableBalance() {
+    for (double gain : {1., 8., 1000.})
+    for (double a : {.1, 1., 10.}) for (double b : {.2, 2., 20.}) {
+        LinkShuffle link;
+        link.issue(0, 5, 1, a, gain); link.issue(0, 5, 3, b, gain);
+        auto first = link.issue(1, 5, 1, a, gain);
+        auto second = link.issue(1, 5, 3, b, gain);
+        if (!near(first.returned + second.returned, 0) || link.magnitude > 5+1e-8) return false;
+        if (a < b && !(first.returned < 0 && second.returned > 0)) return false;
+        if (a > b && !(first.returned > 0 && second.returned < 0)) return false;
+    }
+    return true;
+}
+static_assert(stableBalance(), "Stable weighted populations are centred with the correct signs");
+constexpr bool boundDuringChanges() {
+    for (int oldCount : {1, 5, 100}) for (int count : {1, 5, 100}) {
+        LinkShuffle link;
+        for (int i=0; i<oldCount; ++i) if (link.issue(0, 5, 1, 1).returned != 0) return false;
+        double totalAbs=0;
+        for (int i=0; i<count; ++i) totalAbs += absval(link.issue(1, 5, 1, i%2 ? .1 : 100).returned);
+        if (totalAbs>5+1e-8 || !near(totalAbs, link.magnitude)) return false;
+        if (link.issue(3, 5, 1, 1).returned != 0) return false;
+    }
+    return true;
+}
+static_assert(boundDuringChanges(), "Magnitude is capped even when the old average is stale");
+constexpr bool changedPopulationIsNotZeroSum() {
+    LinkShuffle link;
+    link.issue(0, 5, 1, 1);
+    link.issue(1, 5, 1, 2);
+    return link.net > 0; // Explicitly NOT a strict zero-sum implementation.
+}
+static_assert(changedPopulationIsNotZeroSum());
+constexpr bool segmentation() {
+    LinkShuffle a,b;
+    a.issue(0, 5, 10, 1); b.issue(0, 5, 10, 1);
+    double single=a.issue(1, 5, 2, 2).returned;
+    double split=b.issue(1, 5, 1, 2).returned + b.issue(1, 5, 1, 2).returned;
+    return near(single, split) && near(a.mass,b.mass) && near(a.needMass,b.needMass);
+}
+static_assert(segmentation(), "Smaller packets do not earn more correction");
+constexpr bool packetRateCompensation() {
+    LinkShuffle link;
+    // Equal payload: path at x=2 sends twice as often as path at x=1.
+    link.issue(0, 5, 1./2, 1); link.issue(0, 5, 1./2, 1); link.issue(0, 5, 1., 3);
+    return near(link.issue(1, 5, 1, 2).meanNeed, 2);
+}
+static_assert(packetRateCompensation(), "L/x compensates sampling frequency");
+constexpr bool disabled() {
+    LinkShuffle link;
+    link.issue(0, 0, 1, 1);
+    return link.issue(1, 0, 1, 100).returned == 0;
+}
+static_assert(disabled(), "Zero shuffle fraction disables the queue correction");
+constexpr double feedbackForDuration(int milliseconds) {
+    LinkShuffle link;
+    // Same steady traffic observed over 20ms, then either 20ms or 40ms.
+    for (int i=0;i<20;++i) {
+        link.issue(0,5,1./20,1.1);
+        link.issue(0,5,1./20,1.0);
+    }
+    link.beginRound(1); // Timer, not first packet, closes the prior interval.
+    double positive=0, negative=0;
+    for (int i=0;i<milliseconds;++i) {
+        positive+=link.issue(1,5,1./milliseconds,1.1).returned;
+        negative+=link.issue(1,5,1./milliseconds,1.0).returned;
+    }
+    return near(positive+negative,0) && link.magnitude<=5 ? positive : -1;
+}
+static_assert(feedbackForDuration(20)>0);
+static_assert(near(feedbackForDuration(20),feedbackForDuration(40)),
+    "Longer rounds must not multiply the per-round budget through larger weight sums");
+constexpr bool idleRoundExpiresHistory() {
+    LinkShuffle link;
+    link.issue(0,5,1,1.1);link.issue(0,5,1,1.0);
+    link.beginRound(1);
+    if(link.mass!=0 || !near(link.previousMean,1.05))return false;
+    link.beginRound(2); // The timer closes a completely empty round.
+    return link.previousMass==0 && link.previousMean==0 && link.issue(2,5,1,2).returned==0;
+}
+static_assert(idleRoundExpiresHistory(),"Empty timer rounds discard stale normalisers");
 
-def signal(match):
-    name = match.group(1)
-    signal_ids[name] = len(signal_ids)
-    return f'static constexpr int {name} = {signal_ids[name]};'
-
-
-header = re.sub(r'static simsignal_t (\w+);', signal, header)
-preamble = r'''
-#include <algorithm>
-#include <array>
-#include <cmath>
-#include <cstdint>
-#include <vector>
-struct Time {
-    double value = 0;
-    constexpr double dbl() const { return value; }
-    constexpr operator double() const { return value; }
-};
-constexpr Time SIMTIME_ZERO{};
-constexpr int TCP_S_ESTABLISHED = 1, TCP_S_CLOSE_WAIT = 2;
-struct Algorithm { virtual constexpr ~Algorithm() = default; };
-struct OrbtcpStateVariables {
-    uint32_t snd_cwnd = 1000, additiveIncrease = 1000;
-    Time srtt{.1};
-    bool initialPhase = false;
-};
-struct Connection {
-    Algorithm *algorithm = nullptr;
-    OrbtcpStateVariables *state = nullptr;
-    int fsm = TCP_S_ESTABLISHED;
-    double signals[8] = {};
-    constexpr auto getTcpAlgorithm() const { return algorithm; }
-    constexpr auto getState() const { return state; }
-    constexpr auto getFsmState() const { return fsm; }
-    constexpr void emit(int id, double value) { signals[id] = value; }
-};
-struct MpTcpConnection {
-    std::vector<Connection *> subflows;
-    constexpr const auto& getSubflows() const { return subflows; }
-};
-struct MpOrbSemiCoupledAlpha : Algorithm {
-    static constexpr int subflowRateSignal = 4, connectionRateSignal = 5, rateShareSignal = 6;
-    OrbtcpStateVariables storage;
-    OrbtcpStateVariables *state = &storage;
-    Connection connection{this, state};
-    Connection *conn = &connection;
-    MpTcpConnection *meta = nullptr;
-    bool firstRTT = false;
-    double additiveIncreaseResidual = 0;
-    virtual constexpr void adjustAdditiveIncrease() { state->additiveIncrease *= 2; }
-    constexpr auto getMetaConnection() const { return meta; }
-};
 '''
-checks = r'''
-using Delta = MpOrbSemiCoupledDelta;
-constexpr bool near(double a, double b) { return a-b < 1e-9 && b-a < 1e-9; }
-constexpr double weight(const Delta& d) { return d.conn->signals[Delta::weightSignal]; }
-constexpr double count(const Delta& d) { return d.conn->signals[Delta::eligibleSubflowsSignal]; }
-constexpr uint32_t update(Delta& d, uint32_t incoming=1000) {
-    d.state->additiveIncrease = incoming;
-    d.adjustAdditiveIncrease();
-    return d.state->additiveIncrease;
-}
-constexpr bool equalPaths() {
-    for (int n : {1,2,4,8}) {
-        MpTcpConnection meta;
-        std::array<Delta,8> paths;
-        for (int i=0;i<n;++i) {
-            paths[i].meta=&meta;
-            meta.subflows.push_back(paths[i].conn);
-        }
-        for (int i=0;i<n;++i) {
-            if (update(paths[i])!=1000 || count(paths[i])!=n || weight(paths[i])!=1) return false;
-        }
-    }
-    return true;
-}
-static_assert(equalPaths(), "Equal paths retain full local AI; no extra Alpha multiplier");
-
-constexpr bool asymmetricAndUnequalRtt() {
-    MpTcpConnection meta;
-    Delta a,b;
-    a.meta=b.meta=&meta; meta.subflows={a.conn,b.conn};
-    a.state->snd_cwnd=800; b.state->snd_cwnd=200;
-    if (update(a)!=1000 || update(b)!=400 || !near(weight(a),1) || !near(weight(b),.4)) return false;
-    // Equal estimated rates with unequal RTTs and unequal local B/N-based AI.
-    a.state->srtt={.08}; b.state->srtt={.04}; b.state->snd_cwnd=400;
-    if (update(a,100)!=100 || update(b,350)!=350) return false;
-    // When the sibling leaves, count only the remaining established path.
-    b.conn->fsm=0;
-    return update(a)==1000 && count(a)==1 && weight(a)==1;
-}
-static_assert(asymmetricAndUnequalRtt(), "Cap local AI, use cwnd/RTT, adapt K after departure");
-
-constexpr bool invalidPeers() {
-    MpTcpConnection meta;
-    Delta a,b;
-    Algorithm foreign;
-    OrbtcpStateVariables foreignState;
-    Connection other{&foreign,&foreignState};
-    a.meta=b.meta=&meta; meta.subflows={a.conn,b.conn,nullptr,&other};
-    for (int invalid=0;invalid<5;++invalid) {
-        b.conn->fsm=TCP_S_ESTABLISHED; b.conn->state=b.state;
-        b.state->srtt={.1}; b.state->snd_cwnd=1000;
-        if (invalid==0) b.conn->fsm=0;
-        if (invalid==1) b.conn->state=nullptr;
-        if (invalid==2) b.state->srtt={0};
-        if (invalid==3) b.state->snd_cwnd=0;
-        if (invalid==4) b.state->srtt={-.1};
-        if (update(a)!=1000 || count(a)!=1) return false;
-    }
-    b.state->srtt={.1}; b.conn->fsm=TCP_S_CLOSE_WAIT;
-    return update(a)==1000 && count(a)==2;
-}
-static_assert(invalidPeers(), "Count exactly valid Alpha-family rates; retain CLOSE_WAIT semantics");
-
-constexpr bool startupAndMissingOwnState() {
-    MpTcpConnection meta;
-    Delta a,b;
-    a.meta=b.meta=&meta; meta.subflows={a.conn,b.conn};
-    a.state->snd_cwnd=1; b.state->snd_cwnd=999;
-    a.firstRTT=true;
-    if (update(a)!=1000) return false;
-    a.firstRTT=false; a.state->initialPhase=true;
-    if (update(a)!=1000) return false;
-    a.state->initialPhase=false; a.meta=nullptr;
-    if (update(a)!=1000) return false;
-    a.meta=&meta; meta.subflows={b.conn};
-    if (update(a)!=1000) return false;
-    a.state=nullptr;
-    a.adjustAdditiveIncrease();
-    return true;
-}
-static_assert(startupAndMissingOwnState(), "Preserve startup and handle incomplete membership safely");
-
-constexpr bool byteCreditAndBounds() {
-    MpTcpConnection meta;
-    Delta a,b;
-    a.meta=b.meta=&meta; meta.subflows={a.conn,b.conn};
-    a.state->snd_cwnd=1; b.state->snd_cwnd=999;
-    unsigned total=0;
-    for (int i=0;i<1000;++i) {
-        auto ai=update(a,1);
-        if (ai>1 || a.additiveIncreaseResidual<0 || a.additiveIncreaseResidual>=1) return false;
-        total+=ai;
-    }
-    if (total<1 || total>2) return false; // 1000 * (2/1000), within one byte.
-    double saved=a.additiveIncreaseResidual;
-    if (update(a,0)!=0 || a.additiveIncreaseResidual!=saved) return false;
-    for (uint32_t window : {1,10,100,200,500,800,1000}) {
-        a.state->snd_cwnd=window; b.state->snd_cwnd=1000-window;
-        for (uint32_t ai : {1U,19U,1000U,UINT32_MAX}) {
-            const auto value=update(a,ai);
-            const double share=a.conn->signals[Delta::rateShareSignal];
-            if (value>ai || weight(a)<share || weight(a)>1) return false;
-        }
-    }
-    return true;
-}
-static_assert(byteCreditAndBounds(), "Fractional AI survives; local output stays within uncoupled AI");
-'''
-
-with tempfile.TemporaryDirectory(prefix='delta-policy-check-') as temp:
-    path = Path(temp) / 'delta.cc'
-    path.write_text(preamble + header + method + checks)
-    subprocess.run(['clang++', '-std=c++23', '-fsyntax-only', str(path)], check=True)
-print('Delta production-hook constant-evaluation checks passed; no executable or simulation built/run.')
+with tempfile.TemporaryDirectory(prefix='delta-shuffle-check-') as temp:
+    source = Path(temp) / 'checks.cc'
+    source.write_text(SOURCE)
+    subprocess.run(['clang++', '-std=c++17', '-fsyntax-only', '-I', str(COMMON), str(source)], check=True)
+print('Delta shuffle invariants passed at compile time; no executable or simulation run.')

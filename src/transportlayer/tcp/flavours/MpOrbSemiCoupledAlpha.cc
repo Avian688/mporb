@@ -32,7 +32,6 @@ void MpOrbSemiCoupledAlpha::adjustAdditiveIncrease()
         return;
 
     double connectionRate = 0.0;
-    uint32_t maxFlowCount = 1;
     for (auto *subflow : metaConnection->getSubflows()) {
         if (subflow == nullptr)
             continue;
@@ -51,20 +50,14 @@ void MpOrbSemiCoupledAlpha::adjustAdditiveIncrease()
         double subflowRate = subflowState->snd_cwnd / subflowState->srtt.dbl();
         if (std::isfinite(subflowRate) && subflowRate > 0.0)
             connectionRate += subflowRate;
-
-        maxFlowCount = std::max(maxFlowCount, std::max<uint32_t>(1, state->sharingFlows));
     }
 
     if (!std::isfinite(connectionRate) || connectionRate <= 0.0)
         return;
 
-    double rateShare = std::pow((rate / connectionRate), 1);
-
-    constexpr double MAX_FLOW_BOOST = 2.0;
-
-    const double flowBoost = std::min(MAX_FLOW_BOOST, static_cast<double>(maxFlowCount) / static_cast<double>(state->sharingFlows));
-
-    const double coupledWeight = std::min(1.0, rateShare * flowBoost);
+    // Plain Alpha: only the current subflow rate share scales OrbCC AI.
+    const double rateShare = rate / connectionRate;
+    const double coupledWeight = std::min(1.0, rateShare);
 
     const uint32_t uncoupledAi = state->additiveIncrease;
 

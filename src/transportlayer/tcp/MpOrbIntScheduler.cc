@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: LGPL-3.0-or-later
 #include "MpOrbIntScheduler.h"
-#include "MpOrbConnection.h"
 #include "MpOrbSubflowConnection.h"
+#include "../../../../mptcp/src/transportlayer/tcp/MpTcpConnection.h"
 
 #include <algorithm>
 #include <cmath>

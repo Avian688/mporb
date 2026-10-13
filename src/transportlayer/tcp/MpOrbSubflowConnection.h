@@ -21,6 +21,7 @@
 #include "../../../../mptcp/src/transportlayer/tcp/SubflowConnection.h"
 #include "../../../../orbtcp/src/common/IntTag_m.h"
 #include "../../../../orbtcp/src/common/OmegaPriceTag.h"
+#include "../../../../orbtcp/src/common/DeltaShuffleTag.h"
 
 namespace inet {
 namespace tcp {
@@ -30,13 +31,13 @@ class MpOrbSubflowConnection : public SubflowConnection
   protected:
     std::vector<IntDataVec> intDataContextStack;
     std::vector<Ptr<const OmegaPriceTag>> priceContextStack;
+    std::vector<Ptr<const DeltaShuffleTag>> deltaContextStack;
     bool hasDelayPath = false;
     bool hasDelayFeedback = false;
     uint32_t delayPathDigest = 0;
     simtime_t delaySampleTime = SIMTIME_ZERO;
     simtime_t delayReceivedTime = SIMTIME_ZERO;
     double forwardQueueingDelay = 0;
-    double reverseQueueingDelay = 0;
 
     virtual void pushIntContext(const Ptr<const TcpHeader>& tcpHeader);
     virtual void popIntContext();
@@ -55,6 +56,7 @@ class MpOrbSubflowConnection : public SubflowConnection
     virtual void sendIntAck(const IntDataVec& intData);
     virtual IntDataVec getCurrentIntData() const;
     Ptr<const OmegaPriceTag> getCurrentOmegaPrice() const;
+    Ptr<const DeltaShuffleTag> getCurrentDeltaShuffle() const;
     virtual bool getSchedulerForwardDelay(simtime_t& delay) const;
 };
 

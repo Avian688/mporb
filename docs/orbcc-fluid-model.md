@@ -12,7 +12,7 @@ This analysis describes the inspected local source, not an idealised HPCC algori
 MpORB Alpha follows `MpOrbSemiCoupledAlpha -> MpOrbSemiCoupledBase ->
 MpOrbUncoupled -> OrbtcpPintFlavour -> OrbtcpFlavour`. Standalone OrbCC can
 select either the PINT flavour or the older full-INT flavour; their telemetry
-filters and startup rules differ. Beta, Pressure and U are not substituted for Alpha.
+filters and startup rules differ. Beta is not substituted for Alpha.
 
 **Evidence labels.** **Exact** means a transcription of a control-relevant
 source operation, conditional on its guards. **Hybrid model** retains packet,
@@ -99,7 +99,6 @@ Alpha control path: `normalisedInflight`, `normalisedInflightPrev`, `targetUtil`
 `incStage`, `maxStage`, `additiveIncreaseGainPerAck`, `R`, `rttCount`.
 `B` is the configured initial bandwidth field; accepted feedback uses the
 measured link B and stores it in `bottBW`. `subFlows` is not the Alpha divisor.
-The delivery-rate EWMA helper in `MpOrbSemiCoupledBase` is not called by Alpha.
 These dormant fields should not acquire invented differential equations.
 
 **3. Exact queue events and what U measures.** On arrival of a TCP data packet,

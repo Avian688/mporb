@@ -9,7 +9,7 @@ Enable the scheduler on the meta connections:
 
 Replace any earlier matching `schedulerMode` assignment: OMNeT++ uses the first
 matching assignment. Split-delay feedback is enabled by default for MpORB;
-the scheduler default remains `default`. Alpha, Pressure and Uncoupled can all
+the scheduler default remains `default`. Alpha, Beta and Uncoupled can all
 use `intInformed`. No congestion-control equation is changed by this scheduler.
 
 ## Where the algorithms live
