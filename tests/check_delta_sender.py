@@ -5,10 +5,16 @@ Uses a minimal Alpha parent stub reproducing its inherited OrbCC current-cwnd gr
 Only signal registration and trunc() are replaced for C++17 constant evaluation.
 """
 from pathlib import Path
+import argparse
 import subprocess
 import tempfile
 ROOT = Path(__file__).resolve().parents[1]
-code = (ROOT / 'src/transportlayer/tcp/flavours/MpOrbSemiCoupledDelta.cc').read_text()
+parser = argparse.ArgumentParser()
+parser.add_argument('--variant', choices=['MpOrbSemiCoupledDelta', 'MpOrbSenderDelta'], default='MpOrbSemiCoupledDelta')
+variant = parser.parse_args().variant
+code = (ROOT / f'src/transportlayer/tcp/flavours/{variant}.cc').read_text()
+# The same parent-stub regression exercises either actual implementation.
+code = code.replace(variant, 'MpOrbSemiCoupledDelta')
 start = code.index('uint32_t MpOrbSemiCoupledDelta::computeWnd(')
 opening = code.index('{', start)
 depth = 1
@@ -85,4 +91,4 @@ with tempfile.TemporaryDirectory(prefix='delta-sender-check-') as temp:
     source=Path(temp)/'check.cc'
     source.write_text(STUB+'\n'+body+'\n'+CHECKS)
     subprocess.run(['clang++','-std=c++17','-fsyntax-only',str(source)],check=True)
-print('Delta sender commit regression passed (actual method body, stubbed OrbCC parent; no simulation).')
+print(variant + ' sender commit regression passed (actual method body, stubbed OrbCC parent; no simulation).')

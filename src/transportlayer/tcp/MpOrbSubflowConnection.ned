@@ -20,6 +20,10 @@ import mptcp.transportlayer.tcp.SubflowConnection;
 simple MpOrbSubflowConnection extends SubflowConnection
 {
     parameters:
+        @signal[omegaAdditionalIncrease](type=double; unit=B);
+        @statistic[omegaAdditionalIncrease](record=vector; unit=B; interpolationmode=none);
+        @signal[mpOrbSenderDeltaCorrection](type=double; unit=bps);
+        @statistic[mpOrbSenderDeltaCorrection](title="Sender-computed fairness rate correction"; source=mpOrbSenderDeltaCorrection; unit=bps; record=vector; interpolationmode=none);
         @signal[mpOrbDeltaSubflowRate](type=double; unit=bps);
         @statistic[mpOrbDeltaSubflowRate](record=vector; unit=bps; interpolationmode=sample-hold);
         @signal[mpOrbDeltaConnectionRate](type=double; unit=bps);
@@ -41,16 +45,6 @@ simple MpOrbSubflowConnection extends SubflowConnection
         @statistic[intSchedulerFreshFeedback](record=vector; interpolationmode=sample-hold);
         @statistic[intSchedulerProbe](record=vector; interpolationmode=sample-hold);
         @class("inet::tcp::MpOrbSubflowConnection");
-        @signal[omegaTargetRate](type=double; unit=bps);
-        @signal[omegaPathPrice](type=double);
-        @signal[omegaDeliveryRate](type=double; unit=bps);
-        @signal[omegaFairShareReference](type=double; unit=bps);
-        @signal[omegaPriceFresh](type=bool);
-        @statistic[omegaTargetRate](record=vector; interpolationmode=sample-hold);
-        @statistic[omegaPathPrice](record=vector; interpolationmode=sample-hold);
-        @statistic[omegaDeliveryRate](record=vector; interpolationmode=sample-hold);
-        @statistic[omegaFairShareReference](record=vector; interpolationmode=sample-hold);
-        @statistic[omegaPriceFresh](record=vector; interpolationmode=sample-hold);
 
         @signal[txRate];
         @signal[tau];

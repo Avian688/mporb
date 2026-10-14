@@ -13,12 +13,12 @@ connections have x_r/X=1; multipath subflows share the additive increase as in A
 ## Packet fields
 
 `DeltaShuffleTag` is TCP-header telemetry alongside the existing PINT record.
-Header size is abstracted, as for Omega. Every data transmission carries:
+Header size is abstracted in the simulation. Every data transmission carries:
 
 - x_r = cwnd / SRTT, in payload bytes/s (20 ms bootstrap before SRTT is known).
 - X = sum of nominal rates of active, non-stale Delta subflows, including sender.
 - A transmission serial, echoed on ACKs, to avoid applying a shuffle twice.
-- The signed sum of forward-link shuffle feedback, also echoed on ACKs.
+- The selected highest-U bottleneck shuffle feedback, also echoed on ACKs.
 
 These rates are nominal window rates, not measured delivery rates. Scheduler or
 receive-window limitations can make them overestimate actual traffic.
@@ -199,3 +199,16 @@ computeWnd body with a minimal OrbCC growth-gate test stub: fast ACKs cannot spe
 pending shuffle; only a committed update applies it. C++ syntax and NED validation cover the integration. No library build or
 OMNeT++ simulation was run; convergence/goodput remain to be measured. This is
 not a claim of connection max-min or proportional fairness.
+
+## Selected bottleneck feedback
+
+Both Delta variants now return only OrbCC's maximum-U bottleneck feedback,
+using its existing tighter-B/N tie break. A later winner replaces the previous
+record. A disabled winner clears the record, rather than retaining a lower-U
+link's grant. Other enabled queues still measure aggregate need; a link that is
+not the current maximum does not issue a signed grant for that packet.
+
+Link-wide balancing does not imply applied zero-sum after this path selection:
+some flows select another bottleneck. An upstream provisional grant can also be
+replaced downstream without refunding its magnitude budget. This is conservative
+for the old budget but is not a guarantee of connection max-min fairness.
