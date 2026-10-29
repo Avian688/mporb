@@ -34,7 +34,8 @@ void MpOrbSemiCoupledDelta::stampTelemetry(DeltaShuffleTag& tag)
 double MpOrbSemiCoupledDelta::measureInflight(const IntDataVec& data)
 {
     auto tag = check_and_cast<MpOrbSubflowConnection *>(conn)->getCurrentDeltaShuffle();
-    if (tag && tag->echoed && tag->hops > 0 && tag->serial > lastShuffleSerial &&
+    if (tag && !data.empty() && tag->bottleneckId == data.front().getHopId() &&
+            tag->echoed && tag->hops > 0 && tag->serial > lastShuffleSerial &&
             std::isfinite(tag->shuffle)) {
         lastShuffleSerial = tag->serial;
         // A rate change becomes a cwnd change through this subflow's RTT.

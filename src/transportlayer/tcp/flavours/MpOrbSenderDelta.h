@@ -10,7 +10,7 @@ class MpOrbSenderDelta : public MpOrbSemiCoupledAlpha {
     unsigned long long nextSerial = 0, lastShuffleSerial = 0;
     double pendingShuffleBytes = 0; // accumulated since the last committed window
   public:
-    void stampTelemetry(DeltaShuffleTag& tag);
+    virtual void stampTelemetry(DeltaShuffleTag& tag);
     virtual double measureInflight(const IntDataVec& data) override;
     virtual uint32_t computeWnd(double u, bool updateWc) override;
 };

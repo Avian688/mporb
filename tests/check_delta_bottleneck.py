@@ -4,7 +4,7 @@ from pathlib import Path
 import subprocess
 import tempfile
 root=Path(__file__).resolve().parents[1]
-s=(root.parent/'orbtcp/src/queueing/queue/PintQueue.cc').read_text()
+s=(root.parent/'orbtcp/src/queueing/queue/PintQueue.cc').read_text() + (root/'src/queueing/queue/MpOrbDeltaQueue.cc').read_text()
 def body_at(start):
  opening=s.index('{',start);i=opening+1;depth=1
  while depth:
@@ -13,14 +13,18 @@ def body_at(start):
 start=s.index('if (!hasBottleneckRecord ||')
 condition=s[start+3:s.index('{',start)].strip()
 clear,_=body_at(s.index('if (!tag->echoed && selectedBottleneck)'))
-sender,end=body_at(s.index('if (selectedBottleneck)',s.index('deltaShuffle.measure(')))
+sender,end=body_at(s.index('else {',s.index('if (tag->rateControlled)')))
+sender += 'tag->hops = 1;'
 legacy,_=body_at(s.index('if (selectedBottleneck)',s.index('deltaShuffle.issue(')))
 source=r'''
 #include <cstdint>
+struct Module {constexpr const Module* getParentModule()const{return this;} constexpr int getId()const{return 7;}};
+constexpr Module module{};
+constexpr const Module* getParentModule(){return &module;}
 struct Record {double u;constexpr double getPintUtilization()const{return u;}};
 struct Measurement {double mass,need,meanNeed,coefficient;};
 struct Samples {Measurement value{};int count=0;constexpr void clear(){count=0;} constexpr void push_back(Measurement v){value=v;++count;}};
-struct Tag {double need=0,rawShuffle=0,shuffle=0;unsigned hops=0;Samples measurements;};
+struct Tag {double meanConnectionRate=0,rateAllowance=0,packetMass=0;int bottleneckId=-1;double need=0,rawShuffle=0,shuffle=0;unsigned hops=0;Samples measurements;};
 struct Feedback {double meanNeed=2,coefficient=3,raw=4,returned=5;};
 '''
 source+='constexpr bool selected(bool hasBottleneckRecord,double decodedUtilization,double localFairShare,double currentFairShare,Record intData){return '+condition+';}\n'

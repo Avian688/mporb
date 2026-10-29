@@ -27,6 +27,7 @@ O = $(PROJECT_OUTPUT_DIR)/$(CONFIGNAME)/$(PROJECTRELATIVE_PATH)
 
 # Object files for local .cc, .msg and .sm files
 OBJS = \
+    $O/queueing/queue/MpOrbDeltaQueue.o \
     $O/transportlayer/tcp/MpOrb.o \
     $O/transportlayer/tcp/MpOrbConnection.o \
     $O/transportlayer/tcp/MpOrbIntScheduler.o \
@@ -37,6 +38,7 @@ OBJS = \
     $O/transportlayer/tcp/flavours/MpOrbSemiCoupledBase.o \
     $O/transportlayer/tcp/flavours/MpOrbSemiCoupledBeta.o \
     $O/transportlayer/tcp/flavours/MpOrbSemiCoupledDelta.o \
+    $O/transportlayer/tcp/flavours/MpOrbSemiCoupledTheta.o \
     $O/transportlayer/tcp/flavours/MpOrbSenderDelta.o \
     $O/transportlayer/tcp/flavours/MpOrbUncoupled.o
 

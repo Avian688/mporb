@@ -20,6 +20,8 @@ import mptcp.transportlayer.tcp.SubflowConnection;
 simple MpOrbSubflowConnection extends SubflowConnection
 {
     parameters:
+        @signal[mpOrbThetaCorrection](type=double; unit=bps);
+        @statistic[mpOrbThetaCorrection](title="Theta total-rate fairness correction"; source=mpOrbThetaCorrection; unit=bps; record=vector; interpolationmode=none);
         @signal[omegaAdditionalIncrease](type=double; unit=B);
         @statistic[omegaAdditionalIncrease](record=vector; unit=B; interpolationmode=none);
         @signal[mpOrbSenderDeltaCorrection](type=double; unit=bps);

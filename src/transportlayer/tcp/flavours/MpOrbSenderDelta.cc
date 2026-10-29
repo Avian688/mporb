@@ -35,7 +35,8 @@ void MpOrbSenderDelta::stampTelemetry(DeltaShuffleTag& tag)
 double MpOrbSenderDelta::measureInflight(const IntDataVec& data)
 {
     auto tag = check_and_cast<MpOrbSubflowConnection *>(conn)->getCurrentDeltaShuffle();
-    if (tag && tag->senderControlled && tag->echoed && tag->hops > 0 &&
+    if (tag && !data.empty() && tag->bottleneckId == data.front().getHopId() &&
+            tag->senderControlled && tag->echoed && tag->hops > 0 &&
             tag->serial > lastShuffleSerial) {
         lastShuffleSerial = tag->serial;
         double correction = 0;
