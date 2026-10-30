@@ -43,7 +43,7 @@ constexpr bool boostAndRestore(){
 static_assert(boostAndRestore(),"Extra AI at commit only, no leak to fast ACKs, fairness preserved");
 constexpr bool boundaryAndStartup(){
  State s;Connection c;MpOrbOmega a; a.state=&s;a.conn=&c;
- for(double u:{.9,.95,1.2}) {
+ for(double u:{.75,.750001,.8,.85,.9,.95,1.2}) {
   auto expected=static_cast<uint32_t>(u>=.95 ? 10000*.95/u : 10000)+900;
   if(a.computeWnd(u,true)!=expected || c.lastExtra!=0)return false;
  }
@@ -53,6 +53,20 @@ constexpr bool boundaryAndStartup(){
  return a.computeWnd(.5,true)==13400 && c.lastExtra==0 && s.additiveIncrease==3000;
 }
 static_assert(boundaryAndStartup(),"Strict U threshold, unchanged startup/MD and max rather than sum AI");
+constexpr bool fluctuatingFeedback(){
+ State s;Connection c;MpOrbOmega a; a.state=&s;a.conn=&c;
+ // A near-target dip that formerly qualified must not request extra AI.
+ for(double u:{.84,.79,.88,.76,.9}) {
+  if(a.computeWnd(u,true)!=10900 || c.lastExtra!=0 || s.additiveIncrease!=500)return false;
+ }
+ // Just below the new boundary can boost; equality and a rebound cannot.
+ if(a.computeWnd(.749999,true)<=10900 || c.lastExtra==0 || s.additiveIncrease!=500)return false;
+ for(double u:{.75,.750001,.82}) {
+  if(a.computeWnd(u,true)!=10900 || c.lastExtra!=0 || s.additiveIncrease!=500)return false;
+ }
+ return true;
+}
+static_assert(fluctuatingFeedback(),"Only U strictly below 0.75 admits the boost; no boost persists across feedback");
 constexpr bool rttScaling() {
  State s;Connection c;MpOrbOmega a; a.state=&s;a.conn=&c;
  const double shortIncrease=a.computeWnd(.5,true)-10000-a.fairness;

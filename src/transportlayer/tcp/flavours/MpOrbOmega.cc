@@ -11,8 +11,9 @@ uint32_t MpOrbOmega::computeWnd(double u, bool updateWc)
     const uint32_t alphaAi = state->additiveIncrease;
     // Fast ACKs and startup use Alpha unchanged. B/N is in payload bytes/s;
     // use the same RTT as OrbCC's AI calculation to convert rate to bytes.
+    // Reserve the boost for a clear deficit: 0.20 below the 0.95 target U.
     if (updateWc && !firstRTT && !state->initialPhase &&
-            std::isfinite(u) && u >= 0 && u < 0.9 &&
+            std::isfinite(u) && u >= 0 && u < 0.75 &&
             state->sharingFlows > 0 && rtt > SIMTIME_ZERO) {
         const double fastAi = 0.2 * (static_cast<double>(state->bottBW) /
                 state->sharingFlows) * (0.95 - u) * rtt.dbl();

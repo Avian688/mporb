@@ -4,11 +4,16 @@
 meta timer, switch price state, telemetry and parameters have been removed.
 
 For the maximum-path-U bottleneck, take B/N in payload bytes/s. Only when
-U < 0.9, after startup, at a normal committed RTT window update:
+U < 0.75, after startup, at a normal committed RTT window update:
 
     fastRateIncrease = 0.2 * (B/N) * (0.95-U)
     fastWindowIncrease = fastRateIncrease * RTT
     additionalAI = max(0, fastWindowIncrease - AlphaAI)
+
+The strict 0.75 trigger leaves a 0.20 margin below the 0.95 target U, reserving
+the boost for a larger underutilisation deficit. This is a conservative design
+margin, not a noise bound calibrated from PINT measurements. The target and
+0.2 gain are unchanged.
 
 RTT is the same `rtt` value OrbCC uses to calculate its additive-increase bytes.
 During that commit the parent sees max(AlphaAI, fastWindowIncrease). The original
@@ -28,6 +33,7 @@ normal OrbCC U and B/N retain the existing PINT representation. Equal U uses
 OrbCC's tighter B/N tie break. No selected participating hop means no shuffle.
 
 Run static regression with `python3 tests/check_omega_policy.py`. It checks the
-actual Omega method with a stubbed parent, including U=0.9, startup, no boost
+actual Omega method with a stubbed parent, including values immediately below,
+at and above U=0.75, fluctuating feedback, startup, no boost
 on fast feedback, Alpha-dominant AI and preservation of parent corrections.
 No runtime stability or performance is established by that check.
