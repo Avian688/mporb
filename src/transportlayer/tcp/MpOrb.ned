@@ -35,7 +35,4 @@ simple MpOrb extends MpTcp
         bool pintUseInitialPhase = default(true);
         bool pintUseInitialPhaseFlowCount = default(true);
         bool pintSeparateQueueingDelay = default(true); // MpORB ACKs echo forward delay and accumulate reverse delay separately
-        double mpOrbBetaRedistributionGain = default(0.5); // [0,1]: strength of the centred U-error AI correction; 0 uses plain Alpha
-        double mpOrbBetaUtilizationDeadband = default(0.05); // Absolute U tolerance around eta
-        double mpOrbBetaSmoothingRtts = default(1); // Measurement-time U averaging for coupling, in subflow RTTs
 }

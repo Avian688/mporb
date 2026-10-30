@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Constant-evaluate the actual Omega computeWnd with a minimal sender-Delta stub.
+"""Constant-evaluate the actual Omega computeWnd with a minimal Delta stub.
 No executable or OMNeT++ simulation. Tests the boost boundary and parent contract.
 """
 from pathlib import Path
@@ -19,7 +19,7 @@ constexpr double SIMTIME_ZERO=0;
 struct Time {double value=.04; constexpr double dbl()const{return value;} constexpr operator double()const{return value;}};
 struct State {uint32_t additiveIncrease=500,bottBW=1000000;int sharingFlows=2;bool initialPhase=false;};
 struct Connection {uint32_t lastExtra=0;constexpr void emit(int,uint32_t x){lastExtra=x;}};
-struct MpOrbSenderDelta {
+struct MpOrbDelta {
  State *state=nullptr;Connection *conn=nullptr;Time rtt;bool firstRTT=false;int calls=0;int fairness=400;
  constexpr uint32_t computeWnd(double u,bool commit){
   ++calls;
@@ -29,7 +29,7 @@ struct MpOrbSenderDelta {
   return static_cast<uint32_t>(base)+state->additiveIncrease+fairness;
  }
 };
-struct MpOrbOmega:MpOrbSenderDelta {constexpr uint32_t computeWnd(double,bool);};
+struct MpOrbOmega:MpOrbDelta {constexpr uint32_t computeWnd(double,bool);};
 '''
 checks=r'''
 constexpr bool boostAndRestore(){

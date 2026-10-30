@@ -9,13 +9,9 @@ import argparse
 import subprocess
 import tempfile
 ROOT = Path(__file__).resolve().parents[1]
-parser = argparse.ArgumentParser()
-parser.add_argument('--variant', choices=['MpOrbSemiCoupledDelta', 'MpOrbSenderDelta'], default='MpOrbSemiCoupledDelta')
-variant = parser.parse_args().variant
+variant = 'MpOrbDelta'
 code = (ROOT / f'src/transportlayer/tcp/flavours/{variant}.cc').read_text()
-# The same parent-stub regression exercises either actual implementation.
-code = code.replace(variant, 'MpOrbSemiCoupledDelta')
-start = code.index('uint32_t MpOrbSemiCoupledDelta::computeWnd(')
+start = code.index('uint32_t MpOrbDelta::computeWnd(')
 opening = code.index('{', start)
 depth = 1
 end = opening + 1
@@ -47,10 +43,10 @@ struct MpOrbSemiCoupledAlpha {
         return window;
     }
 };
-struct MpOrbSemiCoupledDelta:MpOrbSemiCoupledAlpha {
+struct MpOrbDelta:MpOrbSemiCoupledAlpha {
     double pendingShuffleBytes=0;
     Connection *conn;
-    constexpr MpOrbSemiCoupledDelta(State *s,Connection *c):MpOrbSemiCoupledAlpha(s),conn(c){}
+    constexpr MpOrbDelta(State *s,Connection *c):MpOrbSemiCoupledAlpha(s),conn(c){}
     constexpr uint32_t computeWnd(double,bool);
 };
 // Same truncation semantics for the finite test inputs; std::trunc is not C++17 constexpr.
@@ -58,7 +54,7 @@ constexpr double truncate(double x){return static_cast<int64_t>(x);}
 '''
 CHECKS = r'''
 constexpr bool onceOnly(double pending,uint32_t expected) {
-    State s; Connection sink; MpOrbSemiCoupledDelta a(&s,&sink);
+    State s; Connection sink; MpOrbDelta a(&s,&sink);
     a.pendingShuffleBytes=pending;
     for(int i=0;i<100;++i){
         s.snd_cwnd=a.computeWnd(.95,false);
@@ -79,7 +75,7 @@ static_assert(onceOnly(1000.75,11000),"Positive shuffle is also applied only at 
 static_assert(onceOnly(-50000,1000),"Window floor is retained and clipped shuffle is consumed");
 static_assert(onceOnly(0,10000),"Disabled shuffle keeps the Alpha baseline result");
 constexpr bool fastMdStillRuns(){
-    State s;Connection sink;MpOrbSemiCoupledDelta a(&s,&sink);
+    State s;Connection sink;MpOrbDelta a(&s,&sink);
     a.pendingShuffleBytes=-1000;
     a.baseTarget=8000;
     s.snd_cwnd=a.computeWnd(1.2,false);

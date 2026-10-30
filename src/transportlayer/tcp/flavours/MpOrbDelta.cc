@@ -1,18 +1,18 @@
 // SPDX-License-Identifier: LGPL-3.0-or-later
-#include "MpOrbSenderDelta.h"
+#include "MpOrbDelta.h"
 #include "../MpOrbSubflowConnection.h"
+#include "../../../common/DeltaShuffle.h"
 #include "../../../../../mptcp/src/transportlayer/tcp/MpTcpConnection.h"
 #include <algorithm>
 #include <cmath>
 #include <limits>
 namespace inet { namespace tcp {
-Register_Class(MpOrbSenderDelta);
+Register_Class(MpOrbDelta);
 
-void MpOrbSenderDelta::stampTelemetry(DeltaShuffleTag& tag)
+void MpOrbDelta::stampTelemetry(DeltaShuffleTag& tag)
 {
     tag = DeltaShuffleTag();
     tag.serial = ++nextSerial;
-    tag.senderControlled = true;
     auto rate = [](const OrbtcpStateVariables *s) {
         // Nominal cwnd/RTT rate, not a measured delivery rate. Bootstrap before RTT.
         return s->snd_cwnd / (s->srtt > SIMTIME_ZERO ? s->srtt.dbl() : 0.02);
@@ -20,7 +20,7 @@ void MpOrbSenderDelta::stampTelemetry(DeltaShuffleTag& tag)
     tag.subflowRate = rate(state);
     if (auto *meta = check_and_cast<MpOrbSubflowConnection *>(conn)->getMetaConnection()) {
         for (auto *sf : meta->getSubflows()) {
-            if (dynamic_cast<MpOrbSenderDelta *>(sf->getTcpAlgorithm()) &&
+            if (dynamic_cast<MpOrbDelta *>(sf->getTcpAlgorithm()) &&
                     sf->isTransportActiveForScheduler() && !sf->isSchedulerStale())
                 tag.connectionRate += rate(static_cast<const OrbtcpStateVariables *>(sf->getState()));
         }
@@ -32,32 +32,29 @@ void MpOrbSenderDelta::stampTelemetry(DeltaShuffleTag& tag)
     conn->emit(totalSignal, 8 * tag.connectionRate);
 }
 
-double MpOrbSenderDelta::measureInflight(const IntDataVec& data)
+double MpOrbDelta::measureInflight(const IntDataVec& data)
 {
     auto tag = check_and_cast<MpOrbSubflowConnection *>(conn)->getCurrentDeltaShuffle();
-    if (tag && !data.empty() && tag->bottleneckId == data.front().getHopId() &&
-            tag->senderControlled && tag->echoed && tag->hops > 0 &&
-            tag->serial > lastShuffleSerial) {
+    if (tag && tag->echoed &&
+            tag->hops > 0 && !data.empty() &&
+            tag->bottleneckId == data.front().getHopId() && tag->serial > lastShuffleSerial) {
         lastShuffleSerial = tag->serial;
-        double correction = 0;
-        // Compare the packet's send-time connection need with the chosen bottleneck's
-        // previous population. L/(x*T) compensates its packet frequency.
-        for (const auto& m : tag->measurements)
-            correction += m.mass * m.coefficient * (m.need - m.meanNeed);
+        // All rates are payload bytes/s. Use the packet's send-time X and the
+        // chosen bottleneck's PREVIOUS interval mean. No inverse-need gain.
+        const double correction = delta::rateCorrection(tag->packetMass,
+                tag->rateAllowance, tag->connectionRate, tag->meanConnectionRate);
         if (!std::isfinite(correction))
-            throw cRuntimeError("Invalid sender Delta fairness feedback");
+            throw cRuntimeError("Invalid Delta fairness feedback");
         if (state->srtt > SIMTIME_ZERO)
             pendingShuffleBytes += correction * state->srtt.dbl();
-        static const simsignal_t needSignal = cComponent::registerSignal("mpOrbDeltaNeed");
-        static const simsignal_t correctionSignal = cComponent::registerSignal("mpOrbSenderDeltaCorrection");
-        conn->emit(needSignal, tag->need);
+        static const simsignal_t correctionSignal = cComponent::registerSignal("mpOrbDeltaCorrection");
         conn->emit(correctionSignal, 8 * correction);
     }
-    // Inherit Alpha's virtual AI hook (x_r/X), startup and local U-based MD.
+    // Preserve Alpha's local telemetry processing and coupled AI/MD.
     return MpOrbSemiCoupledAlpha::measureInflight(data);
 }
 
-uint32_t MpOrbSenderDelta::computeWnd(double u, bool updateWc)
+uint32_t MpOrbDelta::computeWnd(double u, bool updateWc)
 {
     const uint32_t orbWindow = MpOrbSemiCoupledAlpha::computeWnd(u, updateWc);
     // Fast Alpha feedback remains unchanged. Its growth gate may return the

@@ -20,8 +20,7 @@
 
 #include "../../../../orbtcp/src/common/PintSenderTelemetry.h"
 #include "../../../../orbtcp/src/common/PintQueueingDelay.h"
-#include "flavours/MpOrbSemiCoupledDelta.h"
-#include "flavours/MpOrbSenderDelta.h"
+#include "flavours/MpOrbDelta.h"
 
 namespace inet {
 namespace tcp {
@@ -196,12 +195,8 @@ bool MpOrbSubflowConnection::getSchedulerForwardDelay(simtime_t& delay) const
 void MpOrbSubflowConnection::sendToIP(Packet *tcpSegment, const Ptr<TcpHeader>& tcpHeader)
 {
     if (tcpSegment != nullptr && tcpHeader != nullptr && tcpSegment->getByteLength() > 0) {
-        if (auto *delta = dynamic_cast<MpOrbSemiCoupledDelta *>(tcpAlgorithm)) {
+        if (auto *delta = dynamic_cast<MpOrbDelta *>(tcpAlgorithm)) {
             tcpHeader->addTagIfAbsent<DeltaShuffleTag>(); // Detach COW tags first.
-            delta->stampTelemetry(*tcpHeader->addTagIfAbsent<DeltaShuffleTag>());
-        }
-        else if (auto *delta = dynamic_cast<MpOrbSenderDelta *>(tcpAlgorithm)) {
-            tcpHeader->addTagIfAbsent<DeltaShuffleTag>();
             delta->stampTelemetry(*tcpHeader->addTagIfAbsent<DeltaShuffleTag>());
         }
     }

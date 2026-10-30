@@ -20,7 +20,7 @@
 
 #include "../../../../mptcp/src/transportlayer/tcp/SubflowConnection.h"
 #include "../../../../orbtcp/src/common/IntTag_m.h"
-#include "../../../../orbtcp/src/common/DeltaShuffleTag.h"
+#include "../../common/DeltaShuffleTag.h"
 
 namespace inet {
 namespace tcp {

@@ -22,7 +22,7 @@ uint32_t MpOrbOmega::computeWnd(double u, bool updateWc)
     }
     const uint32_t extraAi = state->additiveIncrease - alphaAi;
     // Parent retains the growth gate, local MD, fairness correction and floor.
-    const uint32_t window = MpOrbSenderDelta::computeWnd(u, updateWc);
+    const uint32_t window = MpOrbDelta::computeWnd(u, updateWc);
     state->additiveIncrease = alphaAi; // never leak the boost into fast feedback
     if (updateWc) {
         static const simsignal_t signal = cComponent::registerSignal("omegaAdditionalIncrease");

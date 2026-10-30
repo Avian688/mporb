@@ -1,60 +1,56 @@
 #!/usr/bin/env python3
-"""Compile-time checks of the queue's actual selection/feedback assignment blocks."""
+"""Compile the actual bottleneck selection and feedback assignment blocks."""
 from pathlib import Path
 import subprocess
 import tempfile
 root=Path(__file__).resolve().parents[1]
-s=(root.parent/'orbtcp/src/queueing/queue/PintQueue.cc').read_text() + (root/'src/queueing/queue/MpOrbDeltaQueue.cc').read_text()
-def body_at(start):
+base=(root.parent/'orbtcp/src/queueing/queue/PintQueue.cc').read_text()
+queue=(root/'src/queueing/queue/MpOrbDeltaQueue.cc').read_text()
+def body_at(s,start):
  opening=s.index('{',start);i=opening+1;depth=1
  while depth:
   depth+=(s[i]=='{')-(s[i]=='}');i+=1
- return s[opening+1:i-1],i
-start=s.index('if (!hasBottleneckRecord ||')
-condition=s[start+3:s.index('{',start)].strip()
-clear,_=body_at(s.index('if (!tag->echoed && selectedBottleneck)'))
-sender,end=body_at(s.index('else {',s.index('if (tag->rateControlled)')))
-sender += 'tag->hops = 1;'
-legacy,_=body_at(s.index('if (selectedBottleneck)',s.index('deltaShuffle.issue(')))
+ return s[opening+1:i-1]
+start=base.index('if (!hasBottleneckRecord ||')
+condition=base[start+3:base.index('{',start)].strip()
+clear=body_at(queue,queue.index('if (selectedBottleneck)'))
+assign=body_at(queue,queue.index('if (selectedBottleneck)',queue.index('deltaShuffle.observe(')))
+assign=assign[:assign.index('static const simsignal_t')]
 source=r'''
 #include <cstdint>
 struct Module {constexpr const Module* getParentModule()const{return this;} constexpr int getId()const{return 7;}};
 constexpr Module module{};
 constexpr const Module* getParentModule(){return &module;}
 struct Record {double u;constexpr double getPintUtilization()const{return u;}};
-struct Measurement {double mass,need,meanNeed,coefficient;};
-struct Samples {Measurement value{};int count=0;constexpr void clear(){count=0;} constexpr void push_back(Measurement v){value=v;++count;}};
-struct Tag {double meanConnectionRate=0,rateAllowance=0,packetMass=0;int bottleneckId=-1;double need=0,rawShuffle=0,shuffle=0;unsigned hops=0;Samples measurements;};
-struct Feedback {double meanNeed=2,coefficient=3,raw=4,returned=5;};
+struct Tag {double meanConnectionRate=0,rateAllowance=0,packetMass=0;int bottleneckId=-1;unsigned hops=0;};
+struct Link {double previousMass=2,previousMeanRate=40;};
 '''
 source+='constexpr bool selected(bool hasBottleneckRecord,double decodedUtilization,double localFairShare,double currentFairShare,Record intData){return '+condition+';}\n'
-source+='constexpr void apply(Tag& t,bool chosen,bool enabled,bool senderMode,double need){auto tag=&t;const double mass=1;Feedback feedback; if(chosen){'+clear+'}if(enabled && chosen){if(senderMode){'+sender+'}else{'+legacy+'}}}\n'
+source+='constexpr void apply(Tag& t,bool chosen,bool enabled,double mass){auto tag=&t;Link deltaShuffle;const double deltaShuffleFraction=.05,bandwidthBytesPerSecond=100; if(chosen){'+clear+'}if(enabled && chosen){'+assign+'}}\n'
 source+=r'''
-constexpr bool checks(bool sender){
+constexpr bool checks(){
  Tag t;
  if(!selected(false,.2,100,0,{0}))return false;
- apply(t,true,true,sender,1);
- if(t.hops!=1)return false;
- // A lower-U downstream hop must leave the earlier winner untouched.
+ apply(t,true,true,1);
+ if(t.hops!=1 || t.packetMass!=1 || t.meanConnectionRate!=40 || t.rateAllowance!=2.5 || t.bottleneckId!=7)return false;
  if(selected(true,.1,10,100,{.2}))return false;
- apply(t,false,true,sender,2);
- if(t.need!=1)return false;
- // A higher-U downstream hop replaces, never sums, feedback.
+ apply(t,false,true,2);
+ if(t.packetMass!=1)return false;
  if(!selected(true,.8,100,100,{.2}))return false;
- apply(t,true,true,sender,3);
- if(t.need!=3 || t.hops!=1)return false;
- if(sender && (t.measurements.count!=1 || t.measurements.value.need!=3))return false;
- if(!sender && (t.rawShuffle!=4 || t.shuffle!=5))return false;
- // Preserve OrbCC's equal-U tighter-share tie break.
+ apply(t,true,true,3);
+ if(t.packetMass!=3 || t.hops!=1)return false;
  if(!selected(true,.8,50,100,{.8}) || selected(true,.8,200,100,{.8}))return false;
- // A disabled final winner removes earlier fairness correction entirely.
- apply(t,true,false,sender,4);
- return t.need==0 && t.hops==0 && t.measurements.count==0 && t.rawShuffle==0 && t.shuffle==0;
+ apply(t,true,false,4);
+ return t.hops==0 && t.packetMass==0 && t.rateAllowance==0 && t.meanConnectionRate==0;
 }
-static_assert(checks(false),"Switch Delta only returns chosen bottleneck feedback");
-static_assert(checks(true),"Sender Delta only returns chosen bottleneck measurements");
+static_assert(checks(),"Only chosen bottleneck returns feedback; disabled winner clears earlier feedback");
 '''
+# A later ordinary PintQueue can win without touching the Delta tag: the sender
+# must reject that tag by comparing its origin with the final INT hop.
+sender=(root/'src/transportlayer/tcp/flavours/MpOrbDelta.cc').read_text()
+assert 'tag->bottleneckId == data.front().getHopId()' in sender
+assert 'tag->serial > lastShuffleSerial' in sender
 with tempfile.TemporaryDirectory(prefix='delta-bottleneck-check-') as tmp:
  p=Path(tmp)/'check.cc';p.write_text(source)
  subprocess.run(['clang++','-std=c++17','-fsyntax-only',str(p)],check=True)
-print('Actual bottleneck selection/assignment checks passed for both modes; no simulation.')
+print('Actual bottleneck selection/assignment checks passed; no simulation.')
