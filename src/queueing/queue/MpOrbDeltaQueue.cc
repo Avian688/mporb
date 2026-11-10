@@ -35,7 +35,8 @@ void MpOrbDeltaQueue::startDeltaShuffleRound()
     deltaInterval = deltaIntervalOverride > SIMTIME_ZERO ? deltaIntervalOverride :
             (avgRtt > SIMTIME_ZERO ? avgRtt :
              (fixedAvgRtt > SIMTIME_ZERO ? fixedAvgRtt : pintInitialRtt));
-    deltaShuffle.beginRound(deltaShuffle.epoch + 1);
+    const double rateBudget = deltaShuffleFraction * getLinkBandwidthBytesPerSecond();
+    deltaShuffle.beginRound(deltaShuffle.epoch + 1, rateBudget);
     scheduleAt(simTime() + deltaInterval, deltaShuffleTimer);
     static const simsignal_t intervalSignal = registerSignal("mpOrbDeltaRoundInterval");
     cSimpleModule::emit(intervalSignal, deltaInterval);
@@ -49,7 +50,7 @@ void MpOrbDeltaQueue::handleMessage(cMessage *message)
         else
             // One complete idle round: expire old averages and stop the timer.
             // The next Delta data packet starts a fresh observation round.
-            deltaShuffle.beginRound(deltaShuffle.epoch + 1);
+            deltaShuffle.beginRound(deltaShuffle.epoch + 1, 0);
     }
 
     else
@@ -78,16 +79,25 @@ void MpOrbDeltaQueue::processTelemetryExtension(const Ptr<tcp::TcpHeader>& tcpHe
             !std::isfinite(tag->connectionRate) || tag->connectionRate < tag->subflowRate)
         throw cRuntimeError("Invalid Delta sender rate telemetry");
 
-    // Observe every tagged data packet; inverse nominal rate compensates packet
-    // frequency. The round duration is frozen at its boundary.
+    // The alternative counts the fraction of the connection's traffic seen
+    // here, so sibling subflows sharing this link do not each get a full vote.
+    const double nominalRate = tag->useConnectionRateForMass ? tag->connectionRate : tag->subflowRate;
     const double mass = tcpPayloadBytes /
-            (std::max(tag->subflowRate, deltaRateFloor) * deltaInterval.dbl());
+            (std::max(nominalRate, deltaRateFloor) * deltaInterval.dbl());
     deltaShuffle.observe(mass, tag->connectionRate);
     if (selectedBottleneck) {
         tag->packetMass = mass;
         tag->meanConnectionRate = deltaShuffle.previousMeanRate;
         tag->rateAllowance = deltaShuffle.previousMass > 0 ?
                 deltaShuffleFraction * bandwidthBytesPerSecond / deltaShuffle.previousMass : 0;
+        const double correction = delta::rateCorrection(mass, tag->rateAllowance,
+                tag->connectionRate, tag->meanConnectionRate);
+        if (!std::isfinite(correction))
+            throw cRuntimeError("Invalid Delta fairness feedback");
+        const double granted = deltaShuffle.grantCorrection(correction);
+        // Encode the grant in the existing allowance so the sender uses the same formula.
+        if (granted != correction)
+            tag->rateAllowance *= granted / correction;
         tag->hops = 1;
         static const simsignal_t meanSignal = registerSignal("mpOrbDeltaMeanConnectionRate");
         static const simsignal_t allowanceSignal = registerSignal("mpOrbDeltaRateAllowance");

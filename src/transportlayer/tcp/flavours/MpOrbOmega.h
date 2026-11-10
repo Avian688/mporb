@@ -8,5 +8,10 @@ class MpOrbOmega : public MpOrbDelta {
   public:
     virtual uint32_t computeWnd(double u, bool updateWc) override;
 };
+
+class MpOrbOmegaNonEdgeDisjoint : public MpOrbOmega {
+  public:
+    void stampTelemetry(DeltaShuffleTag& tag) override;
+};
 } }
 #endif

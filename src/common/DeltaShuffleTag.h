@@ -11,6 +11,7 @@ class DeltaShuffleTag : public TagBase {
     unsigned int hops = 0; // zero or one selected participating bottleneck
     int bottleneckId = -1; // must match the final INT winner, including plain PINT hops
     bool echoed = false;
+    bool useConnectionRateForMass = false;
     double meanConnectionRate = 0, rateAllowance = 0; // bytes/s, previous interval
     double packetMass = 0; // dimensionless, current interval
     virtual DeltaShuffleTag *dup() const override { return new DeltaShuffleTag(*this); }
@@ -19,12 +20,14 @@ class DeltaShuffleTag : public TagBase {
         b->pack(subflowRate); b->pack(connectionRate); b->pack(serial);
         b->pack(hops); b->pack(bottleneckId); b->pack(echoed);
         b->pack(meanConnectionRate); b->pack(rateAllowance); b->pack(packetMass);
+        b->pack(useConnectionRateForMass);
     }
     virtual void parsimUnpack(cCommBuffer *b) override {
         TagBase::parsimUnpack(b);
         b->unpack(subflowRate); b->unpack(connectionRate); b->unpack(serial);
         b->unpack(hops); b->unpack(bottleneckId); b->unpack(echoed);
         b->unpack(meanConnectionRate); b->unpack(rateAllowance); b->unpack(packetMass);
+        b->unpack(useConnectionRateForMass);
     }
 };
 }

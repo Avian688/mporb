@@ -13,6 +13,6 @@ simple MpOrbDeltaQueue extends PintQueue
         @statistic[mpOrbDeltaRoundInterval](record=vector; unit=s; interpolationmode=sample-hold);
         // 0 selects avgRTT, sampled and frozen at each round boundary.
         double deltaShuffleInterval @unit(s) = default(0s);
-        double deltaShuffleFraction = default(0.05); // coefficient scale, not a hard budget
+        double deltaShuffleFraction = default(0.05); // coefficient scale and per-sign round budget fraction
         double deltaRateFloor @unit(bps) = default(8kbps); // floor for packet mass L/(x*T)
 }

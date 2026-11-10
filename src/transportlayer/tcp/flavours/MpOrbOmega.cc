@@ -5,6 +5,13 @@
 #include <limits>
 namespace inet { namespace tcp {
 Register_Class(MpOrbOmega);
+Register_Class(MpOrbOmegaNonEdgeDisjoint);
+
+void MpOrbOmegaNonEdgeDisjoint::stampTelemetry(DeltaShuffleTag& tag)
+{
+    MpOrbDelta::stampTelemetry(tag);
+    tag.useConnectionRateForMass = true;
+}
 
 uint32_t MpOrbOmega::computeWnd(double u, bool updateWc)
 {

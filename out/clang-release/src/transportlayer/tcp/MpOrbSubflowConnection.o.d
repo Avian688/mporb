@@ -115,10 +115,10 @@
   transportlayer/tcp/../../../../mptcp/src/transportlayer/tcp/flavours/../../../../../tcpPaced/src/transportlayer/tcp/flavours/TcpPacedFamily.h \
   transportlayer/tcp/../../../../mptcp/src/transportlayer/tcp/../../common/DataSequenceNumberTag_m.h \
   transportlayer/tcp/../../../../orbtcp/src/common/IntTag_m.h \
-  transportlayer/tcp/../../../../orbtcp/src/common/DeltaShuffleTag.h \
+  transportlayer/tcp/../../common/DeltaShuffleTag.h \
   transportlayer/tcp/../../../../orbtcp/src/common/PintSenderTelemetry.h \
   transportlayer/tcp/../../../../orbtcp/src/common/PintQueueingDelay.h \
-  transportlayer/tcp/flavours/MpOrbSemiCoupledDelta.h \
+  transportlayer/tcp/flavours/MpOrbDelta.h \
   transportlayer/tcp/flavours/MpOrbSemiCoupledAlpha.h \
   transportlayer/tcp/flavours/MpOrbSemiCoupledBase.h \
   transportlayer/tcp/flavours/MpOrbUncoupled.h \
@@ -131,8 +131,7 @@
   transportlayer/tcp/flavours/../../../../../orbtcp/src/transportlayer/orbtcp/flavours/../../orbtcp/flavours/OrbtcpFamilyState_m.h \
   transportlayer/tcp/flavours/../../../../../orbtcp/src/transportlayer/orbtcp/flavours/../../orbtcp/flavours/../../../common/IntTag_m.h \
   transportlayer/tcp/flavours/../../../../../orbtcp/src/transportlayer/orbtcp/flavours/../../../../../tcpPaced/src/transportlayer/tcp/flavours/TcpPacedFamily.h \
-  transportlayer/tcp/flavours/../../../../../orbtcp/src/common/DeltaShuffleTag.h \
-  transportlayer/tcp/flavours/MpOrbSenderDelta.h
+  transportlayer/tcp/flavours/../../../common/DeltaShuffleTag.h
 /Library/Developer/CommandLineTools/SDKs/MacOSX27.sdk/SDKSettings.json:
 transportlayer/tcp/MpOrbSubflowConnection.h:
 transportlayer/tcp/../../../../mptcp/src/transportlayer/tcp/SubflowConnection.h:
@@ -249,10 +248,10 @@ transportlayer/tcp/../../../../mptcp/src/transportlayer/tcp/flavours/MpTcpFamily
 transportlayer/tcp/../../../../mptcp/src/transportlayer/tcp/flavours/../../../../../tcpPaced/src/transportlayer/tcp/flavours/TcpPacedFamily.h:
 transportlayer/tcp/../../../../mptcp/src/transportlayer/tcp/../../common/DataSequenceNumberTag_m.h:
 transportlayer/tcp/../../../../orbtcp/src/common/IntTag_m.h:
-transportlayer/tcp/../../../../orbtcp/src/common/DeltaShuffleTag.h:
+transportlayer/tcp/../../common/DeltaShuffleTag.h:
 transportlayer/tcp/../../../../orbtcp/src/common/PintSenderTelemetry.h:
 transportlayer/tcp/../../../../orbtcp/src/common/PintQueueingDelay.h:
-transportlayer/tcp/flavours/MpOrbSemiCoupledDelta.h:
+transportlayer/tcp/flavours/MpOrbDelta.h:
 transportlayer/tcp/flavours/MpOrbSemiCoupledAlpha.h:
 transportlayer/tcp/flavours/MpOrbSemiCoupledBase.h:
 transportlayer/tcp/flavours/MpOrbUncoupled.h:
@@ -265,5 +264,4 @@ transportlayer/tcp/flavours/../../../../../orbtcp/src/transportlayer/orbtcp/flav
 transportlayer/tcp/flavours/../../../../../orbtcp/src/transportlayer/orbtcp/flavours/../../orbtcp/flavours/OrbtcpFamilyState_m.h:
 transportlayer/tcp/flavours/../../../../../orbtcp/src/transportlayer/orbtcp/flavours/../../orbtcp/flavours/../../../common/IntTag_m.h:
 transportlayer/tcp/flavours/../../../../../orbtcp/src/transportlayer/orbtcp/flavours/../../../../../tcpPaced/src/transportlayer/tcp/flavours/TcpPacedFamily.h:
-transportlayer/tcp/flavours/../../../../../orbtcp/src/common/DeltaShuffleTag.h:
-transportlayer/tcp/flavours/MpOrbSenderDelta.h:
+transportlayer/tcp/flavours/../../../common/DeltaShuffleTag.h:

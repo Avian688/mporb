@@ -16,19 +16,36 @@ static_assert(rateCorrection(1,2,40,0)==0,"No prior population: no correction");
 static_assert(near(rateCorrection(.2,2,20,40)*5,1),"Packet splitting preserves total correction");
 constexpr bool rounds(){
  LinkShuffle link;
- link.beginRound(0);
+ link.beginRound(0,6);
  for(double X : {20.,40.,60.}){
   link.observe(1,X);
  }
- link.beginRound(1);
+ link.beginRound(1,6);
  if(!near(link.previousMeanRate,40) || link.previousMass!=3)return false;
  double net=0;
  for(double X : {20.,40.,60.})net+=rateCorrection(1,6/link.previousMass,X,link.previousMeanRate);
  if(!near(net,0))return false;
- link.beginRound(2);
+ link.beginRound(2,0);
  return link.previousMeanRate==0 && link.previousMass==0;
 }
 static_assert(rounds(),"Previous interval mean, equal-rate fixed point, zero-sum and idle reset");
+constexpr bool budgets() {
+    LinkShuffle link;
+    link.beginRound(0, 5);
+    if (link.grantCorrection(4) != 4 || link.grantCorrection(2) != 1 ||
+            link.grantCorrection(1) != 0 || link.grantCorrection(-3) != -3)
+        return false;
+    link.beginRound(0, 5);
+    if (link.grantCorrection(1) != 0 || link.grantCorrection(-4) != -2 ||
+            link.grantCorrection(-1) != 0)
+        return false;
+    link.beginRound(1, 5);
+    if (link.grantCorrection(7) != 5 || link.grantCorrection(-7) != -5)
+        return false;
+    link.beginRound(2, 0);
+    return link.grantCorrection(1) == 0 && link.grantCorrection(-1) == 0;
+}
+static_assert(budgets(), "Independent per-sign clipping, exhaustion and round reset");
 // Total connection service controls the sign, not this path's local rate.
 static_assert(rateCorrection(1,2,200,137.5)<0);
 static_assert(rateCorrection(1,2,75,137.5)>0);

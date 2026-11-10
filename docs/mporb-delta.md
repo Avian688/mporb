@@ -34,6 +34,12 @@ A participating selected bottleneck returns:
     rateAllowance = beta * B / previous M
 
 B is link capacity in bytes/s; beta = deltaShuffleFraction defaults to 0.05.
+Each round starts with separate positive and negative feedback budgets of
+beta * B, using the link capacity at the round boundary. The queue computes
+the packet's correction, limits it to the remaining budget for that sign,
+and debits the grant. If capped, it scales the packet's rateAllowance so the
+sender reconstructs the granted correction. Unused budget expires at the
+round boundary.
 Only the highest-U selected bottleneck supplies the feedback (OrbCC's tighter
 B/N tie break remains). A newly selected disabled queue clears earlier feedback.
 A later ordinary PINT winner is handled by the sender's final hop-ID check.
@@ -52,10 +58,10 @@ Alpha's result, clamps the window to [MSS, UINT32_MAX], updates prevWnd, and
 consumes the adjustment. Fractional bytes remain for later rounding. Fast ACK
 updates still run Alpha, without repeatedly spending the pending correction.
 
-With a stationary interval population, mass-weighted corrections sum to zero.
-Previous-interval feedback, changing load, feedback loss/reordering and window
-clipping prevent exact instantaneous conservation. The 5% coefficient sets a
-scale; it is not a hard interval transfer cap or a global max-min guarantee.
+With a stationary interval population, uncapped mass-weighted corrections sum
+to zero. The two budgets can spend different amounts. Previous-interval
+feedback, changing load, feedback loss/reordering and window clipping also
+prevent exact instantaneous conservation.
 The correction compares nominal cwnd/RTT rates, not measured application goodput.
 
 Signals include mpOrbDeltaSubflowRate, mpOrbDeltaConnectionRate,
