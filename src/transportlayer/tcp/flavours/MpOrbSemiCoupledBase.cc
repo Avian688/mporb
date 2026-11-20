@@ -16,6 +16,14 @@
 namespace inet {
 namespace tcp {
 
+void MpOrbSemiCoupledBase::initialize()
+{
+    MpOrbUncoupled::initialize();
+    // Start using normal PINT feedback without the inherited startup phase.
+    pintUseInitialPhase = false;
+    firstRTT = false;
+}
+
 MpTcpConnection *MpOrbSemiCoupledBase::getMetaConnection() const
 {
     auto *subflow = dynamic_cast<MpOrbSubflowConnection *>(conn);

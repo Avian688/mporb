@@ -22,7 +22,7 @@ simsignal_t MpOrbSemiCoupledAlpha::rateShareSignal = cComponent::registerSignal(
 
 void MpOrbSemiCoupledAlpha::adjustAdditiveIncrease()
 {
-    // Keep OrbCC's startup behavior unchanged; couple only steady-state AI.
+    // Coupled increase needs a valid RTT estimate.
     if (state == nullptr || firstRTT || state->initialPhase || state->srtt <= SIMTIME_ZERO)
         return;
 

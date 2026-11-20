@@ -23,6 +23,7 @@ class MpTcpConnection;
 class MpOrbSemiCoupledBase : public MpOrbUncoupled
 {
   protected:
+    virtual void initialize() override;
     virtual MpTcpConnection *getMetaConnection() const;
 
   public:
