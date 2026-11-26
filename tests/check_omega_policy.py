@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """Constant-evaluate the actual Omega computeWnd with a minimal Delta stub.
-No executable or OMNeT++ simulation. Tests the boost boundary and parent contract.
+No executable or OMNeT++ simulation. Tests the boost cap, boundary and parent contract.
 """
 from pathlib import Path
 import subprocess
@@ -17,13 +17,20 @@ stub=r'''
 #include <limits>
 constexpr double SIMTIME_ZERO=0;
 struct Time {double value=.04; constexpr double dbl()const{return value;} constexpr operator double()const{return value;}};
-struct State {uint32_t additiveIncrease=500,bottBW=1000000;int sharingFlows=2;bool initialPhase=false;};
+struct State {
+ uint32_t additiveIncrease=500,bottBW=1000000;
+ double additiveIncreasePercent=.05;
+ int sharingFlows=2;
+ bool initialPhase=false;
+};
 struct Connection {uint32_t lastExtra=0;constexpr void emit(int,uint32_t x){lastExtra=x;}};
 struct MpOrbDelta {
  State *state=nullptr;Connection *conn=nullptr;Time rtt;bool firstRTT=false;int calls=0;int fairness=400;
+ uint32_t parentAi=0;
  constexpr uint32_t computeWnd(double u,bool commit){
   ++calls;
   // Parent stub exposes which AI Omega presents, including fairness at commit.
+  parentAi=state->additiveIncrease;
   if(!commit)return 8000;
   const double base=u>=.95 ? 10000*.95/u : 10000;
   return static_cast<uint32_t>(base)+state->additiveIncrease+fairness;
@@ -34,13 +41,22 @@ struct MpOrbOmega:MpOrbDelta {constexpr uint32_t computeWnd(double,bool);};
 checks=r'''
 constexpr bool boostAndRestore(){
  State s;Connection c;MpOrbOmega a; a.state=&s;a.conn=&c;
- // fastAI=.2*(1e6/2)*(.95-.5)*.04=1800 bytes, vs Alpha's 500.
- auto w=a.computeWnd(.5,true);
- if(w<12199 || w>12200 || c.lastExtra<1299 || c.lastExtra>1300 || s.additiveIncrease!=500)return false;
- for(int i=0;i<100;++i)if(a.computeWnd(.5,false)!=8000 || s.additiveIncrease!=500)return false;
+ // The uncapped 1800-byte increase falls to 1000 at the normal OrbCC gain of .05.
+ if(a.computeWnd(.5,true)!=11400 || c.lastExtra!=500 || s.additiveIncrease!=500)return false;
+ for(int i=0;i<100;++i) {
+  if(a.computeWnd(.5,false)!=8000 || a.parentAi!=500 || s.additiveIncrease!=500 || c.lastExtra!=500)
+   return false;
+ }
  return a.calls==101 && a.fairness==400;
 }
 static_assert(boostAndRestore(),"Extra AI at commit only, no leak to fast ACKs, fairness preserved");
+constexpr bool configurableCap(){
+ State s;Connection c;MpOrbOmega a; a.state=&s;a.conn=&c;
+ s.additiveIncreasePercent=.03125;
+ // The configured gain times the 20,000-byte fair window gives 625 bytes.
+ return a.computeWnd(.5,true)==11025 && c.lastExtra==125 && s.additiveIncrease==500;
+}
+static_assert(configurableCap(),"Omega follows the configured normal OrbCC AI gain");
 constexpr bool boundaryAndStartup(){
  State s;Connection c;MpOrbOmega a; a.state=&s;a.conn=&c;
  for(double u:{.75,.750001,.8,.85,.9,.95,1.2}) {
@@ -52,15 +68,15 @@ constexpr bool boundaryAndStartup(){
  s.initialPhase=false;s.additiveIncrease=3000;
  return a.computeWnd(.5,true)==13400 && c.lastExtra==0 && s.additiveIncrease==3000;
 }
-static_assert(boundaryAndStartup(),"Strict U threshold, unchanged startup/MD and max rather than sum AI");
+static_assert(boundaryAndStartup(),"Strict U threshold, startup guards, parent MD and max AI");
 constexpr bool fluctuatingFeedback(){
  State s;Connection c;MpOrbOmega a; a.state=&s;a.conn=&c;
  // A near-target dip that formerly qualified must not request extra AI.
  for(double u:{.84,.79,.88,.76,.9}) {
   if(a.computeWnd(u,true)!=10900 || c.lastExtra!=0 || s.additiveIncrease!=500)return false;
  }
- // Just below the new boundary can boost; equality and a rebound cannot.
- if(a.computeWnd(.749999,true)<=10900 || c.lastExtra==0 || s.additiveIncrease!=500)return false;
+ // Just below the gate, the uncapped gain is about .0400002, giving 800 AI bytes.
+ if(a.computeWnd(.749999,true)!=11200 || c.lastExtra!=300 || s.additiveIncrease!=500)return false;
  for(double u:{.75,.750001,.82}) {
   if(a.computeWnd(u,true)!=10900 || c.lastExtra!=0 || s.additiveIncrease!=500)return false;
  }

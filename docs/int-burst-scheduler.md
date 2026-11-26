@@ -7,17 +7,18 @@ Enable the scheduler on the meta connections:
 **.tcp.pintSeparateQueueingDelay = true
 ```
 
-Replace any earlier matching `schedulerMode` assignment: OMNeT++ uses the first
-matching assignment. Split-delay feedback is enabled by default for MpORB;
-the scheduler default remains `default`. Alpha, Beta and Uncoupled can all
-use `intInformed`. No congestion-control equation is changed by this scheduler.
+Replace any earlier matching `schedulerMode` assignment because OMNeT++ uses the
+first match. MpORB enables split-delay feedback by default. The connection
+defaults to `default`, while ExperimentLeo and ExperimentWorkload select
+`defaultCwnd`. Alpha, Delta, Omega and Uncoupled can use `intInformed` with
+their existing congestion-control equations.
 
 ## Where the algorithms live
 
 `mptcp/MpTcpPacketScheduler.cc` owns the existing schedulers and shared burst
 dispatch. `mporb/MpOrbIntScheduler.cc` owns the INT selector, arrival score,
 write-memory admission and reinjection ranking. `MpOrbConnection::createPacketScheduler`
-selects that class only for `intInformed`; ordinary MPTCP has no INT scheduler mode.
+selects that class for `intInformed` and the legacy alias `intBurst`.
 INT parameters and diagnostic signals also live in MpORB. The shared PINT
 message and queue support remain in orbtcp because the queues process both formats.
 

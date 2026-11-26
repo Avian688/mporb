@@ -21,6 +21,7 @@ simple MpOrbSubflowConnection extends SubflowConnection
 {
     parameters:
         @signal[mpOrbDeltaCorrection](type=double; unit=bps);
+        @signal[mpOrbWindowUpdate](type=cObject);
         @statistic[mpOrbDeltaCorrection](title="Delta total-rate fairness correction"; source=mpOrbDeltaCorrection; unit=bps; record=vector; interpolationmode=none);
         @signal[omegaAdditionalIncrease](type=double; unit=B);
         @statistic[omegaAdditionalIncrease](record=vector; unit=B; interpolationmode=none);

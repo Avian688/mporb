@@ -5,14 +5,15 @@ measurements, utilisation/encoding, highest-U bottleneck selection and queueing
 delay. It contains no Delta counters, timer, parameters or signals.
 
 `mporb.queueing.queue.MpOrbDeltaQueue` extends the normal telemetry hook with
-aggregate packet-mass and connection-rate measurements. The previous interval's
-mean connection rate and common rate allowance are returned for the chosen
-bottleneck. The switch does not calculate signed grants. Both `MpOrbDelta` and
-its boosted child `MpOrbOmega` calculate the same correction at the sender.
-See [mporb-delta.md](mporb-delta.md) for equations and approximation limits.
+aggregate packet-mass and connection-rate measurements. When a queue becomes
+the current PINT winner, it calculates a signed correction from the previous
+round's mean rate and caps it against the remaining budget for that sign.
+The queue encodes the grant in the rate allowance. `MpOrbDelta` and `MpOrbOmega`
+reconstruct and apply it at the sender. See [Delta's equations and queue
+placement](mporb-delta.md) for details.
 
-The feedback's bottleneck ID must match the final INT winner, including when a
-later ordinary PintQueue replaces the selected bottleneck. Experiment generators
-enable fairness measurement only on their explicit bottleneck allowlists.
-Alpha and uncoupled OrbCC use ordinary PintQueue. Base queue RTT estimation and
-EWMA behaviour are unchanged by the variant consolidation.
+The feedback's bottleneck ID must match the final PINT winner. A later ordinary
+`PintQueue` can win the bottleneck selection, in which case the sender ignores
+the earlier shuffle feedback. Queue placement varies by experiment. Alpha and
+uncoupled OrbCC use `PintQueue` wherever those experiments request OrbCC
+telemetry. Both queue variants use the same base RTT estimation and EWMA.

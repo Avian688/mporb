@@ -1,8 +1,9 @@
 # MpOrbDelta
 
 `MpOrbDelta` inherits `MpOrbSemiCoupledAlpha`. It is the consolidated former
-Theta controller. Alpha's AI, local utilisation-based MD, startup and pacing
-remain the baseline; Delta adds a connection-rate fairness correction.
+Theta controller. Delta adds a connection-rate fairness correction to Alpha's
+AI, local utilisation-based MD and pacing. The coupled base retains ordinary
+transport startup and disables the PINT initial phase.
 `MpOrbOmega` inherits Delta and retains its underutilisation AI boost.
 
 ## Sender to switch
@@ -40,9 +41,10 @@ the packet's correction, limits it to the remaining budget for that sign,
 and debits the grant. If capped, it scales the packet's rateAllowance so the
 sender reconstructs the granted correction. Unused budget expires at the
 round boundary.
-Only the highest-U selected bottleneck supplies the feedback (OrbCC's tighter
-B/N tie break remains). A newly selected disabled queue clears earlier feedback.
-A later ordinary PINT winner is handled by the sender's final hop-ID check.
+Each queue that becomes the current PINT winner can write feedback and debit
+its local budget. The sender accepts feedback whose hop ID matches the final
+winner, selected by highest `U` with OrbCC's tighter `B/N` tie break. A newly
+selected Delta queue with shuffling disabled clears earlier shuffle feedback.
 
 ## Sender correction
 
@@ -68,7 +70,11 @@ Signals include mpOrbDeltaSubflowRate, mpOrbDeltaConnectionRate,
 mpOrbDeltaCorrection, mpOrbDeltaAppliedShuffle and the queue's
 mpOrbDeltaMeanConnectionRate, mpOrbDeltaRateAllowance, mpOrbDeltaRoundInterval.
 
-Use MpOrbDeltaQueue for Delta/Omega experiments; set deltaShuffleFraction to
-0.05 only on intended forward bottlenecks and 0 elsewhere. Alpha and uncoupled
-comparators continue using ordinary PintQueue. Rebuild mporb before running the
-new names and tag layout. Static checks do not validate simulation behaviour.
+## Queue placement
+
+Use `MpOrbDeltaQueue` on links that should supply shuffle feedback. The default
+`deltaShuffleFraction` is `0.05`. Set it to `0` to keep PINT telemetry and
+disable shuffling on that queue. The four numbered experiments enable shuffling
+on their forward bottlenecks. ExperimentLeo and ExperimentWorkload configure
+Omega's shuffle queues on satellite, ground-station and user-terminal PPP
+interfaces, so a terminal access link can also supply feedback.
